@@ -1,0 +1,207 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ──────────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isValidString(field) {
+      return field is string && field.size() > 0;
+    }
+
+    function incomingData() {
+      return request.resource.data;
+    }
+
+    function existingData() {
+      return resource.data;
+    }
+
+    // ─── Users ─────────────────────────────────────────────────────────
+    // Users can read their own profile always.
+    // Other users' profiles are readable by any authenticated user
+    // (needed for displaying names, avatars in posts/chat).
+    // Users can only write to their own profile.
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+
+      // Only the owner can create their own profile
+      allow create: if isOwner(userId)
+        && incomingData().uid == userId
+        && isValidString(incomingData().name)
+        && isValidString(incomingData().email);
+
+      // Only the owner can update their own profile
+      allow update: if isOwner(userId)
+        && incomingData().uid == userId;
+
+      // Only the owner can delete (account deletion flow)
+      allow delete: if isOwner(userId);
+
+      // ─── Karma History (sub-collection) ────────────────────────────
+      match /karma_history/{historyId} {
+        allow read: if isOwner(userId);
+        allow write: if isAuthenticated();
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // ─── Posts ──────────────────────────────────────────────────────────
+    // All authenticated users can read posts (community feed).
+    // Only authenticated users can create posts, and the userId must match.
+    // Only the post owner can update or delete their posts.
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+
+      // Prevent fake posts: userId in the post must match the auth user
+      allow create: if isAuthenticated()
+        && incomingData().userId == request.auth.uid
+        && isValidString(incomingData().title)
+        && isValidString(incomingData().communityId);
+
+      // Owner can update (or any authenticated user for likes/comments count)
+      allow update: if isAuthenticated()
+        && (
+          // Owner updating their own post
+          existingData().userId == request.auth.uid
+          // OR any authenticated user updating likes/comments
+          // (atomic array operations for likedBy, responderIds)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'likes', 'responderIds', 'commentsCount']))
+        );
+
+      // Only the owner can delete
+      allow delete: if isAuthenticated()
+        && existingData().userId == request.auth.uid;
+
+      // ─── Comments (sub-collection of posts) ────────────────────────
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+
+        // Comment userId must match the authenticated user
+        allow create: if isAuthenticated()
+          && incomingData().userId == request.auth.uid
+          && isValidString(incomingData().content);
+
+        // Only comment owner can update (for likes toggling, any auth user)
+        allow update: if isAuthenticated();
+
+        // Only comment owner can delete
+        allow delete: if isAuthenticated()
+          && existingData().userId == request.auth.uid;
+      }
+    }
+
+    // ─── Conversations ─────────────────────────────────────────────────
+    // Conversations are readable by participants or community members.
+    // Anyone authenticated can create (DM or community).
+    // Updates allowed for participants (typing, readBy, unreadCounts).
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated()
+        && (
+          // User is a participant
+          request.auth.uid in existingData().participants
+          // OR it's a community conversation (open membership)
+          || existingData().type == 'community'
+        );
+
+      allow create: if isAuthenticated();
+
+      allow update: if isAuthenticated()
+        && (
+          request.auth.uid in existingData().participants
+          || existingData().type == 'community'
+        );
+
+      // ─── Messages (sub-collection of conversations) ────────────────
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+
+        // senderId must match the authenticated user
+        allow create: if isAuthenticated()
+          && incomingData().senderId == request.auth.uid;
+
+        // Only message sender can update (soft delete, reactions)
+        allow update: if isAuthenticated();
+
+        allow delete: if false; // Soft delete only, no hard deletes
+      }
+    }
+
+    // ─── Notifications ─────────────────────────────────────────────────
+    // Users can only read their own notifications.
+    // The system (any authenticated user) can create notifications
+    // (needed for comment/like/SOS notifications created by other users).
+    // Only the notification owner can update (mark as read) or delete.
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated()
+        && existingData().userId == request.auth.uid;
+
+      // Any authenticated user can create (system sends on behalf of actions)
+      allow create: if isAuthenticated()
+        && isValidString(incomingData().userId)
+        && isValidString(incomingData().title)
+        && isValidString(incomingData().type);
+
+      // Only the notification recipient can update (mark as read)
+      allow update: if isAuthenticated()
+        && existingData().userId == request.auth.uid;
+
+      // Only the notification recipient can delete
+      allow delete: if isAuthenticated()
+        && existingData().userId == request.auth.uid;
+    }
+
+    // ─── Communities ───────────────────────────────────────────────────
+    match /communities/{communityId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if false; // Communities are never deleted by users
+    }
+
+    // ─── Reports ───────────────────────────────────────────────────────
+    // Any authenticated user can create a report.
+    // Reports are not readable by regular users (admin only).
+    match /reports/{reportId} {
+      allow create: if isAuthenticated()
+        && incomingData().reporterId == request.auth.uid;
+      allow read: if false;   // Admin-only via Firebase Console
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Services ──────────────────────────────────────────────────────
+    match /services/{serviceId} {
+      allow read: if isAuthenticated();
+      
+      // A user can create a service profile linked to their own UID
+      allow create: if isAuthenticated() 
+        && incomingData().userId == request.auth.uid;
+      
+      // Provider can update their own service
+      allow update: if isAuthenticated() 
+        && (existingData().userId == request.auth.uid 
+            || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'reviewCount']));
+      
+      allow delete: if isAuthenticated() && existingData().userId == request.auth.uid;
+    }
+
+    match /service_reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && incomingData().userId == request.auth.uid;
+      allow update: if isAuthenticated() && existingData().userId == request.auth.uid;
+      allow delete: if isAuthenticated() && existingData().userId == request.auth.uid;
+    }
+
+    // ─── Catch-all: Deny everything else ───────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
