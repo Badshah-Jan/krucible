@@ -4,7 +4,8 @@ import { UserService } from "./userService";
 // or Firebase Cloud Functions to protect the RESEND_API_KEY. Calling Resend directly from the client
 // exposes the API key to potential abuse. This implementation serves as a prototype/wrapper.
 
-const RESEND_API_KEY = process.env.EXPO_PUBLIC_RESEND_API_KEY || "re_LGCRVGcW_PTLox7qhHCzVy3n9pmJLyW4U";
+// SECURE: The actual API key is now safely stored in Firebase Cloud Functions (see functions/index.js)
+const RESEND_API_KEY = "MOVED_TO_CLOUD_FUNCTIONS";
 const SENDER_EMAIL = "hello@neighborly.com"; // Replace with your verified Resend domain
 
 export type EmailType = 

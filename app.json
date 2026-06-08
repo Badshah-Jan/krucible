@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.neighborly.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/icon.png"
@@ -24,6 +25,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#208AEF"
+        }
+      ],
       [
         "expo-splash-screen",
         {

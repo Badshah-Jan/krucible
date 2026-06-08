@@ -2,6 +2,7 @@ import ConfirmationModal from "@/components/common/ConfirmationModal";
 import CustomToast from "@/components/common/CustomToast";
 import ErrorBoundary from "@/components/common/ErrorBoundary";
 import LocationBanner from "@/components/common/LocationBanner";
+import NetworkLockdown from "@/components/common/NetworkLockdown";
 import "@/locales/i18n";
 import { AuthService } from "@/services/authService";
 import { ChatService } from "@/services/chatService";
@@ -140,7 +141,8 @@ export default function RootLayout() {
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener(
       (notification) => {
-        const { title, body } = notification.request.content;
+        const { title, body, data } = notification.request.content;
+        console.log("[Notification] Notification received in foreground:", title, body, data);
 
         // Show as in-app toast (uses UI store we already have)
         if (title) {
@@ -162,31 +164,36 @@ export default function RootLayout() {
 
         if (!data) return;
 
-        console.log("[Notification] Tapped:", data.type, data);
+        console.log("[Notification] Notification tapped with data:", data);
 
         // Route based on notification type
         switch (data.type) {
           case "sos_alert":
+            if (data.sosId) {
+              console.log("[Navigation] Executed navigation to SOS:", data.sosId);
+              router.push(`/sos/${data.sosId}`);
+            }
+            break;
+
           case "comment":
           case "comment_reply":
           case "help_request":
           case "like_notification":
             if (data.postId) {
-              console.log("[Navigation] → Post:", data.postId);
+              console.log("[Navigation] Executed navigation to Post:", data.postId);
               router.push(`/post/${data.postId}`);
             }
             break;
-
           case "direct_message":
           case "chat_message":
             if (data.chatId) {
-              console.log("[Navigation] → Chat:", data.chatId);
+              console.log("[Navigation] Executed navigation to Chat:", data.chatId);
               router.push(`/chat/${data.chatId}`);
             }
             break;
 
           case "karma_reward":
-            console.log("[Navigation] → Karma");
+            console.log("[Navigation] Executed navigation to Karma");
             router.push("/karma");
             break;
 
@@ -194,7 +201,7 @@ export default function RootLayout() {
           case "recommendation":
           case "lost_found":
             if (data.postId) {
-              console.log("[Navigation] → Community Post:", data.postId);
+              console.log("[Navigation] Executed navigation to Community Post:", data.postId);
               router.push(`/post/${data.postId}`);
             }
             break;
@@ -297,6 +304,7 @@ export default function RootLayout() {
       <CustomToast />
       <ConfirmationModal />
       <LocationBanner />
+      <NetworkLockdown />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />

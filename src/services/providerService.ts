@@ -30,6 +30,17 @@ export interface ServiceProvider {
   communityId: string;
   rating: number;
   reviewCount: number;
+  
+  // Future Monetization & Admin Fields
+  verified?: boolean;
+  verifiedAt?: any;
+  verifiedBy?: string;
+  featured?: boolean;
+  featuredUntil?: any;
+  promotionLevel?: number;
+  views?: number;
+  contactClicks?: number;
+
   createdAt?: any;
   updatedAt?: any;
 }
@@ -58,12 +69,17 @@ export const CATEGORIES = [
 ];
 
 class ProviderService {
-  async registerProvider(provider: Omit<ServiceProvider, "id" | "rating" | "reviewCount" | "createdAt" | "updatedAt">) {
+  async registerProvider(provider: Omit<ServiceProvider, "id" | "rating" | "reviewCount" | "createdAt" | "updatedAt" | "verified" | "featured" | "views" | "contactClicks">) {
     const colRef = collection(db, "services");
     const docRef = await addDoc(colRef, {
       ...provider,
       rating: 0,
       reviewCount: 0,
+      verified: false,
+      featured: false,
+      promotionLevel: 0,
+      views: 0,
+      contactClicks: 0,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -97,13 +113,46 @@ class ProviderService {
     const snapshot = await getDocs(q);
     const services = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as ServiceProvider));
     
-    // Sort by availability and rating locally (Firestore complex queries need indexes)
+    // Sort locally: 
+    // 1. Featured providers first
+    // 2. Then by availability
+    // 3. Then by rating
     return services.sort((a: any, b: any) => {
+      if (a.featured !== b.featured) {
+        return a.featured ? -1 : 1;
+      }
       if (a.isAvailable === b.isAvailable) {
         return b.rating - a.rating;
       }
       return a.isAvailable ? -1 : 1;
     });
+  }
+
+  // Analytics Tracking Methods
+  async trackProviderView(id: string) {
+    try {
+      const docRef = doc(db, "services", id);
+      const snapshot = await getDoc(docRef);
+      if (snapshot.exists()) {
+        const currentViews = snapshot.data().views || 0;
+        await updateDoc(docRef, { views: currentViews + 1 });
+      }
+    } catch (error) {
+      console.warn("Analytics error tracking provider view:", error);
+    }
+  }
+
+  async trackContactClick(id: string) {
+    try {
+      const docRef = doc(db, "services", id);
+      const snapshot = await getDoc(docRef);
+      if (snapshot.exists()) {
+        const currentClicks = snapshot.data().contactClicks || 0;
+        await updateDoc(docRef, { contactClicks: currentClicks + 1 });
+      }
+    } catch (error) {
+      console.warn("Analytics error tracking contact click:", error);
+    }
   }
 
   async addReview(review: Omit<ServiceReview, "id" | "createdAt">) {

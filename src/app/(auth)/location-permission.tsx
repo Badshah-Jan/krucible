@@ -134,7 +134,8 @@ export default function LocationPermissionScreen() {
         district: place.district,
         city: place.city,
         country: place.country,
-      });
+        communityId,
+      } as any);
 
       const community: Community = {
         name: communityName,
@@ -170,17 +171,7 @@ export default function LocationPermissionScreen() {
     }
   };
 
-  const handleSkip = () => {
-    const fallback: Community = {
-      name: 'Block 13',
-      area: 'Block 13',
-      district: 'Gulshan-e-Iqbal',
-      city: 'Karachi',
-      country: 'Pakistan',
-    };
-    setLocation({ lat: 24.9252, lng: 67.0949 }, fallback);
-    router.replace('/(tabs)');
-  };
+
 
   // Determine active color based on phase
   const getPhaseColor = () => {
@@ -296,9 +287,6 @@ export default function LocationPermissionScreen() {
                   <Ionicons name="location" size={20} color="#000000" />
                   <Text style={styles.primaryButtonText}>{t('enable_location', 'Enable Location')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-                  <Text style={styles.skipText}>{t('skip_for_now', 'Skip for now')}</Text>
-                </TouchableOpacity>
               </Animated.View>
             )}
 
@@ -307,9 +295,6 @@ export default function LocationPermissionScreen() {
                 <TouchableOpacity onPress={phase === 'denied' ? () => setPhase('permission') : handleAllow} style={styles.primaryButton} activeOpacity={0.8}>
                   <Ionicons name="refresh" size={20} color="#000000" />
                   <Text style={styles.primaryButtonText}>Try Again</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-                  <Text style={styles.skipText}>Continue with default area</Text>
                 </TouchableOpacity>
               </Animated.View>
             )}

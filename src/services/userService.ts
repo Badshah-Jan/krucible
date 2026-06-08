@@ -120,10 +120,10 @@ export class UserService {
   ): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         ...updates,
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
 
       // Fan-out updates to denormalized data (Posts)
       if (updates.photoURL || updates.name) {
@@ -314,10 +314,10 @@ export class UserService {
   ): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         ...data,
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error updating user:", error);
       throw error;
@@ -347,10 +347,10 @@ export class UserService {
         ...preferences,
       };
 
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         notificationPreferences: updatedPrefs,
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error updating notification preferences:", error);
       throw error;
@@ -375,10 +375,10 @@ export class UserService {
         ...settings,
       };
 
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         privacySettings: updatedSettings,
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error updating privacy settings:", error);
       throw error;
@@ -390,10 +390,10 @@ export class UserService {
   static async blockUser(uid: string, blockedUid: string): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         blockedUsers: arrayUnion(blockedUid),
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error blocking user:", error);
       throw error;
@@ -403,10 +403,10 @@ export class UserService {
   static async unblockUser(uid: string, blockedUid: string): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         blockedUsers: arrayRemove(blockedUid),
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error unblocking user:", error);
       throw error;
@@ -441,10 +441,10 @@ export class UserService {
         createdAt: new Date().toISOString(),
       };
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         emergencyContacts: arrayUnion(newContact),
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error adding emergency contact:", error);
       throw error;
@@ -460,10 +460,10 @@ export class UserService {
       const contacts = user?.emergencyContacts || [];
       const updated = contacts.filter((c) => c.id !== contactId);
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         emergencyContacts: updated,
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error removing emergency contact:", error);
       throw error;
@@ -482,10 +482,10 @@ export class UserService {
         c.id === contactId ? { ...c, ...updates } : c,
       );
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         emergencyContacts: updated,
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error updating emergency contact:", error);
       throw error;
@@ -511,10 +511,10 @@ export class UserService {
   ): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         karma: increment(amount),
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
 
       // ─── NEW: Add history record ──────────────────────────────────────────
       const historyRef = collection(db, "users", uid, "karma_history");
@@ -575,10 +575,10 @@ export class UserService {
   static async incrementPostsCount(uid: string): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         postsCount: increment(1),
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error incrementing posts count:", error);
       throw error;
@@ -588,10 +588,10 @@ export class UserService {
   static async incrementCommentsCount(uid: string): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      await updateDoc(docRef, {
+      await setDoc(docRef, {
         commentsCount: increment(1),
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
     } catch (error) {
       console.error("Error incrementing comments count:", error);
       throw error;

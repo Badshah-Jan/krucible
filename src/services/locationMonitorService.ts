@@ -214,7 +214,39 @@ export class LocationMonitorService {
         accuracy: Location.Accuracy.Balanced,
       });
       const currentCoords = useAppStore.getState().coordinates;
-      if (!currentCoords) return;
+      
+      // If store is empty (app just started), populate it
+      if (!currentCoords) {
+        const place = await LocationService.reverseGeocode(
+          pos.coords.latitude,
+          pos.coords.longitude,
+        );
+        if (!place) return;
+
+        const { communityId, communityName } =
+          await CommunityService.assignUserToCommunity({
+            userId: uid,
+            neighborhood: place.neighborhood,
+            district: place.district,
+            city: place.city,
+            country: place.country,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          });
+          
+        useAppStore.getState().setLocation(
+          { lat: pos.coords.latitude, lng: pos.coords.longitude },
+          {
+            name: communityName,
+            area: place.neighborhood,
+            district: place.district,
+            city: place.city,
+            country: place.country,
+            communityId,
+          },
+        );
+        return;
+      }
 
       const dist = this.calculateDistance(
         currentCoords.lat,

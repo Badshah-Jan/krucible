@@ -87,7 +87,7 @@ export default function ChatDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [pendingMsgs, setPendingMsgs] = useState<ChatMessage[]>([]);
-  const [otherUserPresence, setOtherUserPresence] = useState<{ isOnline: boolean; lastSeen: any } | null>(null);
+  const [otherUserPresence, setOtherUserPresence] = useState<{ isOnline: boolean; lastSeen: any; isDeleted?: boolean } | null>(null);
 
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -136,16 +136,51 @@ export default function ChatDetailScreen() {
     return unsub;
   }, [id]);
 
+  const otherUid = convMeta?.type === 'dm' && currentUser?.uid 
+    ? convMeta.participants?.find((p: string) => p !== currentUser.uid) 
+    : null;
+  const isBlocked = otherUid ? currentUser?.blockedUsers?.includes(otherUid) : false;
+
   // ── Subscribe to other user's online status (DM only) ────────────────
   useEffect(() => {
-    if (!convMeta || convMeta.type !== 'dm' || !currentUser?.uid) return;
-    const otherUid = convMeta.participants?.find((p: string) => p !== currentUser.uid);
     if (!otherUid) return;
     const unsub = ChatService.subscribeToUserPresence(otherUid, (presence) => {
       setOtherUserPresence(presence);
     });
     return unsub;
-  }, [convMeta?.type, convMeta?.participants?.length, currentUser?.uid]);
+  }, [otherUid]);
+
+  // ── Block User ─────────────────────────────────────────────────────────────
+  const handleBlockUser = useCallback(() => {
+    if (!otherUid || !currentUser?.uid) return;
+    
+    Alert.alert(
+      isBlocked ? 'Unblock User' : 'Block User',
+      isBlocked 
+        ? 'Are you sure you want to unblock this user?'
+        : 'Are you sure you want to block this user? They will not be able to message you anymore.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: isBlocked ? 'Unblock' : 'Block', 
+          style: isBlocked ? 'default' : 'destructive',
+          onPress: async () => {
+            try {
+              if (isBlocked) {
+                await UserService.unblockUser(currentUser.uid, otherUid);
+                Alert.alert('Unblocked', 'User has been unblocked.');
+              } else {
+                await UserService.blockUser(currentUser.uid, otherUid);
+                Alert.alert('Blocked', 'User has been blocked.');
+              }
+            } catch (err) {
+              Alert.alert('Error', 'Could not update block status.');
+            }
+          }
+        }
+      ]
+    );
+  }, [isBlocked, otherUid, currentUser?.uid]);
 
   // ── Mark as read on open ───────────────────────────────────────────────────
   useEffect(() => {
@@ -283,6 +318,7 @@ export default function ChatDetailScreen() {
 
       const { msg, grouped } = item;
       const isMe = msg.senderId === currentUser?.uid;
+      const isSystem = msg.senderId === "system_sos";
       const isPending = msg.status === 'pending';
       const isFailed = msg.status === 'failed';
       const isDeleted = !!msg.deletedAt;
@@ -291,9 +327,13 @@ export default function ChatDetailScreen() {
       const reactionEntries = Object.entries(reactions).filter(([, uids]) => uids.length > 0);
 
       return (
-        <View style={[styles.msgWrapper, isMe ? styles.myWrapper : styles.theirWrapper, grouped && { marginTop: 2 }]}>
+        <View style={[
+          styles.msgWrapper, 
+          isSystem ? styles.systemWrapper : isMe ? styles.myWrapper : styles.theirWrapper, 
+          grouped && { marginTop: 2 }
+        ]}>
           {/* Avatar column for others */}
-          {!isMe && (
+          {!isMe && !isSystem && (
             <View style={styles.avatarCol}>
               {!grouped ? (
                 msg.senderAvatar ? (
@@ -309,8 +349,8 @@ export default function ChatDetailScreen() {
             </View>
           )}
 
-          <View style={[styles.msgContent, isMe && { alignItems: 'flex-end' }]}>
-            {!isMe && !grouped && (
+          <View style={[styles.msgContent, isSystem && { maxWidth: '90%', width: '100%' }, isMe && { alignItems: 'flex-end' }]}>
+            {!isMe && !isSystem && !grouped && (
               <Text style={styles.senderName}>{msg.senderName}</Text>
             )}
 
@@ -319,13 +359,33 @@ export default function ChatDetailScreen() {
               onLongPress={() => handleLongPress(msg)}
               style={[
                 styles.bubble,
-                isMe ? styles.myBubble : styles.theirBubble,
+                isSystem ? styles.systemBubble : isMe ? styles.myBubble : styles.theirBubble,
                 isPending && { opacity: 0.6 },
                 isFailed && { borderWidth: 1, borderColor: '#EF4444' },
               ]}
             >
               {isDeleted ? (
                 <Text style={[styles.msgText, { fontStyle: 'italic', opacity: 0.5 }]}>Message deleted</Text>
+              ) : msg.type === "sos_alert" ? (
+                <View style={styles.sosAlertCard}>
+                  <View style={styles.sosHeader}>
+                    <Ionicons name="alert-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.sosTitle}>EMERGENCY ALERT</Text>
+                  </View>
+                  <View style={styles.sosBody}>
+                    <Text style={styles.sosText}>{msg.text}</Text>
+                    {msg.metadata?.sosId && (
+                      <View style={styles.sosActions}>
+                        <TouchableOpacity 
+                          style={styles.sosBtn}
+                          onPress={() => router.push(`/sos/${msg.metadata.sosId}` as any)}
+                        >
+                          <Text style={styles.sosBtnText}>View SOS</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </View>
               ) : msg.imageUrl ? (
                 <Image source={{ uri: msg.imageUrl }} style={styles.msgImage} />
               ) : (
@@ -398,8 +458,10 @@ export default function ChatDetailScreen() {
               <Ionicons name="people" size={18} color="#2563EB" />
             </View>
             <View>
-              <Text style={styles.headerName} numberOfLines={1}>{chatName}</Text>
-              {typingUsers.length > 0 ? (
+              <Text style={styles.headerName} numberOfLines={1}>{otherUserPresence?.isDeleted ? 'Deleted Account' : chatName}</Text>
+              {otherUserPresence?.isDeleted ? (
+                <Text style={[styles.headerSub, { color: '#EF4444' }]}>Account no longer exists</Text>
+              ) : typingUsers.length > 0 ? (
                 <Text style={styles.headerSub}>
                   {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing…
                 </Text>
@@ -418,13 +480,23 @@ export default function ChatDetailScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.headerBtn}>
-            <Ionicons name="information-circle-outline" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
+          {otherUid ? (
+            <TouchableOpacity style={styles.headerBtn} onPress={handleBlockUser}>
+              <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.headerBtn}>
+              <Ionicons name="information-circle-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Messages ── */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 25}
+        >
           {loading ? (
             <View style={styles.center}>
               <ActivityIndicator color="#FFFFFF" />
@@ -453,42 +525,54 @@ export default function ChatDetailScreen() {
           )}
 
           {/* ── Input ── */}
-          <View style={styles.inputArea}>
-            <TouchableOpacity 
-              style={styles.attachBtn}
-              onPress={() => {
-                Alert.alert(
-                  'Attach',
-                  'Choose an option',
-                  [
-                    { text: 'Photo/Video', onPress: () => Alert.alert('Feature', 'Photo/Video picker coming soon') },
-                    { text: 'Document', onPress: () => Alert.alert('Feature', 'Document picker coming soon') },
-                    { text: 'Location', onPress: () => Alert.alert('Feature', 'Location sharing coming soon') },
-                    { text: 'Cancel', style: 'cancel' },
-                  ]
-                );
-              }}
-            >
-              <Ionicons name="add" size={22} color="#9CA3AF" />
-            </TouchableOpacity>
-            <TextInput
-              style={styles.input}
-              placeholder="Type a message…"
-              placeholderTextColor="#6B7280"
-              value={inputText}
-              onChangeText={handleInputChange}
-              onBlur={stopTyping}
-              multiline
-              maxLength={1000}
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, !inputText.trim() && { opacity: 0.4 }]}
-              onPress={handleSend}
-              disabled={!inputText.trim()}
-            >
-              <Ionicons name="send" size={16} color="#FFFFFF" style={{ marginLeft: 2 }} />
-            </TouchableOpacity>
-          </View>
+          {otherUserPresence?.isDeleted ? (
+            <View style={[styles.inputArea, { justifyContent: 'center', paddingVertical: 20 }]}>
+              <Ionicons name="trash" size={16} color="#9CA3AF" style={{ marginRight: 6 }} />
+              <Text style={{ color: '#9CA3AF', fontSize: 14, fontWeight: '700' }}>This account has been deleted.</Text>
+            </View>
+          ) : isBlocked ? (
+            <View style={[styles.inputArea, { justifyContent: 'center', paddingVertical: 20 }]}>
+              <Ionicons name="lock-closed" size={16} color="#EF4444" style={{ marginRight: 6 }} />
+              <Text style={{ color: '#EF4444', fontSize: 14, fontWeight: '700' }}>You have blocked this user.</Text>
+            </View>
+          ) : (
+            <View style={styles.inputArea}>
+              <TouchableOpacity 
+                style={styles.attachBtn}
+                onPress={() => {
+                  Alert.alert(
+                    'Attach',
+                    'Choose an option',
+                    [
+                      { text: 'Photo/Video', onPress: () => Alert.alert('Feature', 'Photo/Video picker coming soon') },
+                      { text: 'Document', onPress: () => Alert.alert('Feature', 'Document picker coming soon') },
+                      { text: 'Location', onPress: () => Alert.alert('Feature', 'Location sharing coming soon') },
+                      { text: 'Cancel', style: 'cancel' },
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="add" size={22} color="#9CA3AF" />
+              </TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                placeholder="Type a message…"
+                placeholderTextColor="#6B7280"
+                value={inputText}
+                onChangeText={handleInputChange}
+                onBlur={stopTyping}
+                multiline
+                maxLength={1000}
+              />
+              <TouchableOpacity
+                style={[styles.sendBtn, !inputText.trim() && { opacity: 0.4 }]}
+                onPress={handleSend}
+                disabled={!inputText.trim()}
+              >
+                <Ionicons name="send" size={16} color="#FFFFFF" style={{ marginLeft: 2 }} />
+              </TouchableOpacity>
+            </View>
+          )}
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GradientBg>
@@ -537,6 +621,54 @@ const styles = StyleSheet.create({
   msgWrapper: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 6 },
   myWrapper: { justifyContent: 'flex-end' },
   theirWrapper: { justifyContent: 'flex-start' },
+  systemWrapper: { justifyContent: 'center' },
+
+  sosAlertCard: {
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    overflow: 'hidden',
+    width: 250,
+  },
+  sosHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  sosTitle: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  sosBody: {
+    padding: 12,
+  },
+  sosText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  sosActions: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    paddingTop: 12,
+  },
+  sosBtn: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  sosBtnText: {
+    color: '#EF4444',
+    fontWeight: '800',
+    fontSize: 13,
+  },
   avatarCol: { width: 30, marginRight: 8 },
   avatar: { width: 28, height: 28, borderRadius: 14 },
   avatarFallback: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
@@ -549,6 +681,7 @@ const styles = StyleSheet.create({
   bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
   myBubble: { backgroundColor: '#2563EB', borderBottomRightRadius: 4 },
   theirBubble: { backgroundColor: 'rgba(255,255,255,0.1)', borderBottomLeftRadius: 4 },
+  systemBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
   msgText: { color: '#FFFFFF', fontSize: 14, lineHeight: 20 },
   msgImage: { width: 200, height: 200, borderRadius: 12 },
   msgMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 },

@@ -172,15 +172,22 @@ export default function PostCard({
           </View>
         </View>
 
-        <View
-          style={[
-            styles.categoryPill,
-            { backgroundColor: catTheme.bg, borderColor: catTheme.border },
-          ]}
-        >
-          <Text style={[styles.categoryText, { color: catTheme.color }]}>
-            {post.category}
-          </Text>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          {post.sponsored && (
+            <View style={[styles.categoryPill, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+              <Text style={[styles.categoryText, { color: '#D97706' }]}>Sponsored</Text>
+            </View>
+          )}
+          <View
+            style={[
+              styles.categoryPill,
+              { backgroundColor: catTheme.bg, borderColor: catTheme.border },
+            ]}
+          >
+            <Text style={[styles.categoryText, { color: catTheme.color }]}>
+              {post.category}
+            </Text>
+          </View>
         </View>
       </View>
 

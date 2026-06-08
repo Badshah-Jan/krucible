@@ -6,6 +6,9 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { AuthService } from "@/services/authService";
 import { CommunityDoc, CommunityService } from "@/services/communityService";
 import { Post as FirestorePost, PostService } from "@/services/postService";
+import { SosService, SOSAlert } from "@/services/sosService";
+import ProviderService, { ServiceProvider } from "@/services/providerService";
+import BusinessService, { BusinessProfile } from "@/services/businessService";
 import { UserService } from "@/services/userService";
 import { useAppStore } from "@/store/appStore";
 import { formatDistance, haversineDistance } from "@/utils/distance";
@@ -85,8 +88,11 @@ export default function HomeFeedScreen() {
   const [neighModal, setNeighModal] = useState(false);
 
   const [livePosts, setLivePosts] = useState<FirestorePost[]>([]);
+  const [activeSosAlerts, setActiveSosAlerts] = useState<SOSAlert[]>([]);
   const [communityDoc, setCommunityDoc] = useState<CommunityDoc | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [featuredProviders, setFeaturedProviders] = useState<ServiceProvider[]>([]);
+  const [nearbyBusinesses, setNearbyBusinesses] = useState<BusinessProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
 
@@ -120,7 +126,7 @@ export default function HomeFeedScreen() {
     setIsLoading(true);
     setFeedError(null);
 
-    const unsub = PostService.subscribeToCommunityPosts(
+    const unsubPosts = PostService.subscribeToCommunityPosts(
       cid,
       coordinates?.lat,
       coordinates?.lng,
@@ -136,7 +142,36 @@ export default function HomeFeedScreen() {
       },
     );
 
-    return unsub;
+    const unsubSos = SosService.subscribeToActiveSOS(cid, (alerts) => {
+      setActiveSosAlerts(alerts);
+    });
+
+    const loadMonetizationEntities = async () => {
+      try {
+        const providers = await ProviderService.getServicesByCommunity(cid);
+        setFeaturedProviders(providers.filter(p => p.featured).slice(0, 5));
+        
+        const businesses = await BusinessService.getBusinessesByCommunity(cid);
+        setNearbyBusinesses(businesses.slice(0, 5));
+      } catch (err) {
+        console.warn("Could not load monetization entities", err);
+      }
+    };
+    loadMonetizationEntities();
+
+    // Auto-heal missing communityId in user profile
+    const healProfile = async () => {
+      const me = AuthService.getCurrentUser();
+      if (me && cid && userProfile && !userProfile.communityId) {
+        await UserService.updateUser(me.uid, { communityId: cid } as any);
+      }
+    };
+    healProfile();
+
+    return () => {
+      unsubPosts();
+      unsubSos();
+    };
   }, [
     authInitialized,
     community?.communityId,
@@ -148,9 +183,7 @@ export default function HomeFeedScreen() {
   // ── Derived stats ─────────────────────────────────────────────────────────
   const oneDayAgo = Date.now() - 86_400_000;
 
-  const activeSosCount = livePosts.filter(
-    (p) => p.category === "Emergency" && isWithin24h(p.createdAt),
-  ).length;
+  const activeSosCount = activeSosAlerts.length;
 
   const activeTodayCount = livePosts.filter((p) => {
     if (!p.createdAt) return false;
@@ -217,8 +250,39 @@ export default function HomeFeedScreen() {
 
   // ── Feed items ──────────────────────────────────────────────────────────
   const feedItems = useMemo(() => {
-    if (!me) return filtered;
-    return filtered.map((post) => {
+    // 1. Map SOS Alerts into feed-friendly cards
+    const sosItems = activeSosAlerts.map(alert => {
+      let dist = "Nearby";
+      if (coordinates && alert.location?.lat && alert.location?.lng) {
+        dist = formatDistance(
+          haversineDistance(
+            coordinates.lat,
+            coordinates.lng,
+            alert.location.lat,
+            alert.location.lng,
+          ),
+        );
+      }
+      return {
+        id: `sos_${alert.id}`,
+        originalId: alert.id,
+        userName: alert.creatorName,
+        userAvatar: "", 
+        timePosted: getTimeAgo(alert.createdAt),
+        distance: dist,
+        likes: 0,
+        commentsCount: alert.respondersCount || 0, 
+        likedByMe: false,
+        category: "Emergency", 
+        title: `🚨 ${alert.type}`,
+        description: `Emergency reported in ${alert.location.area}. Status: ${alert.status.toUpperCase()}`,
+        createdAt: alert.createdAt,
+        isSos: true,
+      };
+    });
+
+    // 2. Map standard posts
+    const postItems = filtered.map((post) => {
       let dist = "Nearby";
       if (coordinates && post.latitude && post.longitude) {
         dist = formatDistance(
@@ -239,10 +303,21 @@ export default function HomeFeedScreen() {
         distance: dist,
         likes: post.likesCount ?? 0,
         commentsCount: post.commentsCount ?? 0,
-        likedByMe: post.likedBy?.includes(me.uid) ?? false,
+        likedByMe: me ? (post.likedBy?.includes(me.uid) ?? false) : false,
+        isSos: false,
       };
     });
-  }, [filtered, coordinates, me]);
+
+    // 3. Combine and sort
+    const combined = [...sosItems, ...postItems];
+    combined.sort((a, b) => {
+       const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+       const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+       return bTime - aTime;
+    });
+
+    return combined;
+  }, [filtered, activeSosAlerts, coordinates, me]);
 
   const go = (action: string) => guardAction(action);
 
@@ -469,7 +544,7 @@ export default function HomeFeedScreen() {
               </ScrollView>
             </Animated.View>
 
-            {/* ── MARKETPLACE ── */}
+            {/* ── MARKETPLACE BANNER ── */}
             <Animated.View entering={FadeInDown.duration(350).delay(150)}>
               <View style={s.sectionHead}>
                 <Text style={s.sectionTitle}>Local Services</Text>
@@ -495,8 +570,58 @@ export default function HomeFeedScreen() {
               </TouchableOpacity>
             </Animated.View>
 
+            {/* ── LOCAL HIGHLIGHTS (COMBINED) ── */}
+            {(featuredProviders.length > 0 || nearbyBusinesses.length > 0) && (
+              <Animated.View entering={FadeInDown.duration(350).delay(150)}>
+                <View style={s.sectionHead}>
+                  <Text style={s.sectionTitle}>Local Highlights</Text>
+                  <TouchableOpacity onPress={() => router.push("/businesses" as any)}>
+                    <Text style={{color: T.primary, fontSize: 13, fontWeight: "600"}}>Explore</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: PX, paddingTop: 12, paddingBottom: 8, gap: 12 }}>
+                  {featuredProviders.map(provider => (
+                    <TouchableOpacity 
+                      key={`prov-${provider.id}`} 
+                      style={s.featuredCard}
+                      onPress={() => router.push(`/services/${provider.id}` as any)}
+                    >
+                      <View style={[s.featuredBadge, { backgroundColor: '#F59E0B' }]}>
+                        <Ionicons name="star" size={10} color="#FFFFFF" />
+                        <Text style={s.featuredBadgeText}>Featured</Text>
+                      </View>
+                      <View style={s.featuredIconBox}>
+                        <Ionicons name="person" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={s.featuredName} numberOfLines={1}>{provider.name}</Text>
+                      <Text style={s.featuredCat}>{provider.category}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  {nearbyBusinesses.map(biz => (
+                    <TouchableOpacity 
+                      key={`biz-${biz.id}`} 
+                      style={s.bizCard}
+                      onPress={() => router.push(`/businesses/${biz.id}` as any)}
+                    >
+                      <View style={s.bizIconBox}>
+                        <Ionicons name="storefront" size={24} color="#6366F1" />
+                      </View>
+                      <Text style={s.bizName} numberOfLines={1}>{biz.businessName}</Text>
+                      <Text style={s.bizCat}>{biz.category}</Text>
+                      {biz.verified && (
+                        <View style={s.bizVerified}>
+                          <Ionicons name="checkmark-circle" size={12} color="#10B981" />
+                          <Text style={s.bizVerifiedText}>Verified</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            )}
+
             {/* ── FEED HEADER ── */}
-            <Animated.View entering={FadeIn.delay(150)}>
+            <Animated.View entering={FadeIn.delay(250)}>
               <View style={s.sectionHead}>
                 <Text style={s.sectionTitle}>Community feed</Text>
                 <Pressable
@@ -579,10 +704,16 @@ export default function HomeFeedScreen() {
                   <PostCard
                     key={post.id}
                     post={post}
-                    onPress={() => router.push(`/post/${post.id}` as any)}
-                    onLikePress={() => handleLike(post)}
+                    onPress={() => 
+                      post.isSos 
+                        ? router.push(`/sos/${post.originalId}` as any) 
+                        : router.push(`/post/${post.id}` as any)
+                    }
+                    onLikePress={() => !post.isSos && handleLike(post as FirestorePost)}
                     onCommentPress={() =>
-                      router.push(`/post/${post.id}` as any)
+                      post.isSos 
+                        ? router.push(`/sos/${post.originalId}` as any) 
+                        : router.push(`/post/${post.id}` as any)
                     }
                   />
                 ))}
@@ -717,18 +848,7 @@ export default function HomeFeedScreen() {
                 style={[s.sheetRow, { borderBottomWidth: 0 }]}
                 onPress={() => {
                   setSheetVisible(false);
-                  Alert.alert(
-                    "Trigger SOS?",
-                    "This alerts neighbors immediately.",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Send SOS",
-                        style: "destructive",
-                        onPress: () => router.push("/sos"),
-                      },
-                    ],
-                  );
+                  router.push("/sos");
                 }}
               >
                 <View style={[s.sheetIco, { backgroundColor: T.dangerBg }]}>
@@ -1173,4 +1293,18 @@ const s = StyleSheet.create({
     color: "#4F46E5",
     marginRight: 4,
   },
+  
+  featuredCard: { width: 156, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center" },
+  featuredBadge: { position: "absolute", top: -10, backgroundColor: "#F59E0B", flexDirection: "row", alignItems: "center", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, zIndex: 1 },
+  featuredBadgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "700" },
+  featuredIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center", marginBottom: 8, marginTop: 4 },
+  featuredName: { fontSize: 13, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 2 },
+  featuredCat: { fontSize: 11, color: "#6B7280", textAlign: "center" },
+
+  bizCard: { width: 156, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center" },
+  bizIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#EEF2FF", alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  bizName: { fontSize: 13, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 2 },
+  bizCat: { fontSize: 11, color: "#6B7280", textAlign: "center", marginBottom: 6 },
+  bizVerified: { flexDirection: "row", alignItems: "center", backgroundColor: "#ECFDF5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  bizVerifiedText: { fontSize: 10, color: "#10B981", fontWeight: "600", marginLeft: 2 },
 });

@@ -121,6 +121,7 @@ class NotificationService {
       }
       const tokenData = await Notifications.getExpoPushTokenAsync();
       token = tokenData.data;
+      console.log("[NotificationService] Token generated:", token);
     } else {
       console.warn("Push notifications require a physical device");
     }
@@ -134,6 +135,7 @@ class NotificationService {
         fcmTokens: arrayUnion(token),
         lastActive: serverTimestamp(),
       });
+      console.log("[NotificationService] Token stored to Firestore user document for user:", userId);
 
       // Listen for token refresh events
       this._startTokenRefreshListener(userId);

@@ -138,11 +138,11 @@ export class CommunityService {
       }
 
       // Persist communityId on the user document
-      await updateDoc(userRef, {
+      await setDoc(userRef, {
         communityId,
         communityName,
         lastActive: serverTimestamp(),
-      });
+      }, { merge: true });
 
       return { communityId, communityName };
     } catch (error) {

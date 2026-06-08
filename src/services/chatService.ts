@@ -34,7 +34,7 @@ export interface ChatMessage {
   text?: string;
   imageUrl?: string;
   audioUrl?: string;
-  type: "text" | "image" | "audio";
+  type: "text" | "image" | "audio" | "sos_alert" | "system";
   senderId: string;
   senderName: string;
   senderAvatar?: string;
@@ -43,6 +43,7 @@ export interface ChatMessage {
   reactions?: Record<string, string[]>; // emoji → [uid, ...]
   replyTo?: { id: string; text: string; senderName: string } | null;
   deletedAt?: any;
+  metadata?: any;
 }
 
 export interface Conversation {
@@ -233,6 +234,23 @@ export class ChatService {
       ? ({ id: convSnap.id, ...convSnap.data() } as Conversation)
       : null;
     let recipientIds = participantIds.filter((uid) => uid !== message.senderId);
+
+    // --- Block Check ---
+    if (recipientIds.length === 1 && conversation?.type === "dm") {
+      const recipientId = recipientIds[0];
+      const senderDoc = await getDoc(doc(db, "users", message.senderId));
+      const recipientDoc = await getDoc(doc(db, "users", recipientId));
+      
+      const senderData = senderDoc.data();
+      const recipientData = recipientDoc.data();
+      
+      if (
+        senderData?.blockedUsers?.includes(recipientId) || 
+        recipientData?.blockedUsers?.includes(message.senderId)
+      ) {
+        throw new Error("Cannot send message. User is blocked.");
+      }
+    }
 
     if (
       recipientIds.length === 0 &&
@@ -476,7 +494,7 @@ export class ChatService {
    */
   static subscribeToUserPresence(
     uid: string,
-    callback: (data: { isOnline: boolean; lastSeen: any }) => void,
+    callback: (data: { isOnline: boolean; lastSeen: any; isDeleted?: boolean }) => void,
   ): () => void {
     return onSnapshot(doc(db, "users", uid), (snap: any) => {
       if (snap.exists()) {
@@ -484,6 +502,13 @@ export class ChatService {
         callback({
           isOnline: d.isOnline ?? false,
           lastSeen: d.lastSeen ?? null,
+          isDeleted: false,
+        });
+      } else {
+        callback({
+          isOnline: false,
+          lastSeen: null,
+          isDeleted: true,
         });
       }
     });

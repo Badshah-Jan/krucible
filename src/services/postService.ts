@@ -55,6 +55,7 @@ export interface Post {
   // Computed client-side, not stored:
   distanceKm?: number;
   distanceLabel?: string;
+  sponsored?: boolean;
 }
 
 export class PostService {

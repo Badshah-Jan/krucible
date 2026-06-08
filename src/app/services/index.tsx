@@ -134,7 +134,7 @@ export default function ServicesMarketplaceScreen() {
         </ScrollView>
 
         {/* Floating Action Button */}
-        {!hasProviderProfile && (
+        {!hasProviderProfile ? (
           <TouchableOpacity 
             style={styles.fab} 
             activeOpacity={0.9}
@@ -142,6 +142,23 @@ export default function ServicesMarketplaceScreen() {
           >
             <Ionicons name="briefcase-outline" size={20} color="#FFFFFF" />
             <Text style={styles.fabText}>Offer a Service</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.fab, { backgroundColor: '#10B981' }]} 
+            activeOpacity={0.9}
+            onPress={() => {
+              // Get current user id to navigate to their profile
+              const user = AuthService.getCurrentUser();
+              if (user) {
+                ProviderService.getProviderByUserId(user.uid).then(profile => {
+                  if (profile) router.push(`/services/${profile.id}` as any);
+                });
+              }
+            }}
+          >
+            <Ionicons name="person-circle-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.fabText}>My Profile</Text>
           </TouchableOpacity>
         )}
       </SafeAreaView>
