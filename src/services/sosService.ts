@@ -148,11 +148,15 @@ export class SosService {
         alertData.location?.district || "Community"
       );
 
-      await ChatService.sendMessage(roomId, {
+      const msgRef = doc(collection(db, "conversations", roomId, "messages"));
+      const batch2 = writeBatch(db);
+      batch2.set(msgRef, {
         type: "sos_alert",
         text,
         senderId: "system_sos",
         senderName: "Emergency System",
+        createdAt: Timestamp.now(),
+        status: "sent",
         metadata: {
           sosId: alertData.id,
           status,
@@ -161,7 +165,14 @@ export class SosService {
           creatorName: alertData.creatorName,
           radiusKm: alertData.radiusKm,
         }
-      }, []);
+      });
+      const convRef2 = doc(db, "conversations", roomId);
+      batch2.update(convRef2, {
+        lastMessage: text.substring(0, 60),
+        lastMessageAt: Timestamp.now(),
+        lastSenderId: "system_sos",
+      });
+      await batch2.commit();
     } catch (e) {
       console.warn("Could not broadcast SOS system message:", e);
     }
@@ -265,13 +276,13 @@ export class SosService {
       const now = new Date();
       const alerts = snapshot.docs
         .map((d: any) => ({ id: d.id, ...d.data() } as SOSAlert))
-        .filter((a) => {
+        .filter((a: any) => {
           // Client-side auto-expiry check and status check
           if (a.status !== "active" && a.status !== "responding") return false;
           const exp = a.expiresAt?.toDate ? a.expiresAt.toDate() : new Date(a.expiresAt ?? 0);
           return exp > now;
         })
-        .sort((a, b) => {
+        .sort((a: any, b: any) => {
           const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
           const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
           return bTime - aTime;
@@ -348,17 +359,16 @@ export class SosService {
   static async resolveSOS(sosId: string): Promise<void> {
     try {
       const docRef = doc(db, "sos_alerts", sosId);
+      const snap = await getDoc(docRef);
+      const data = snap.exists() ? snap.data() : null;
+
       await updateDoc(docRef, {
         status: "resolved",
         resolvedAt: serverTimestamp(),
       });
-      
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
+
+      if (data) {
         await UserService.incrementKarma(data.creatorId, 30, "Resolved an SOS Emergency");
-        
-        // Broadcast update
         this.broadcastSOSSystemMessage({ ...data, id: sosId }, "resolved").catch(console.warn);
       }
     } catch (error) {
@@ -373,14 +383,15 @@ export class SosService {
   static async cancelSOS(sosId: string): Promise<void> {
     try {
       const docRef = doc(db, "sos_alerts", sosId);
+      const snap = await getDoc(docRef);
+      const data = snap.exists() ? snap.data() : null;
+
       await updateDoc(docRef, {
         status: "cancelled",
         cancelledAt: serverTimestamp(),
       });
-      
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
+
+      if (data) {
         this.broadcastSOSSystemMessage({ ...data, id: sosId }, "cancelled").catch(console.warn);
       }
     } catch (error) {

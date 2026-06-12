@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Store, CheckCircle, Star, Trash2 } from 'lucide-react';
+import { Store, Star, Trash2 } from 'lucide-react';
+import type { QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
 interface Business {
   id: string;
@@ -20,8 +22,8 @@ export default function Businesses() {
 
   useEffect(() => {
     const q = query(collection(db, "businesses"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Business));
+    const unsub = onSnapshot(q, (snap: QuerySnapshot<DocumentData>) => {
+      const list = mapQuerySnapshot<Business>(snap, withDocId);
       setBusinesses(list);
       setLoading(false);
     });

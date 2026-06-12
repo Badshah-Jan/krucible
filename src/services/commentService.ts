@@ -17,6 +17,8 @@ import {
 } from 'firebase/firestore';
 import { PostService } from './postService';
 import NotificationService from './notificationService';
+import { SecurityService } from './securityService';
+import { sanitizeText } from '@/utils/security';
 
 export interface Comment {
   id?: string;
@@ -36,10 +38,13 @@ export class CommentService {
    */
   static async addComment(postId: string, commentData: Omit<Comment, 'id' | 'createdAt' | 'likesCount' | 'likedBy'>): Promise<string> {
     try {
+      await SecurityService.enforceRateLimit('comment_create');
+
       // 1. Add comment to posts/{postId}/comments
       const commentsRef = collection(db, 'posts', postId, 'comments');
       const docRef = await addDoc(commentsRef, {
         ...commentData,
+        content: sanitizeText(commentData.content, 2000),
         likesCount: 0,
         likedBy: [],
         createdAt: serverTimestamp()

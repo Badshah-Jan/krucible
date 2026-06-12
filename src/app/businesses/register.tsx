@@ -1,11 +1,14 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import BusinessService, { BUSINESS_CATEGORIES } from "@/services/businessService";
 import { useAppStore } from "@/store/appStore";
 import { AuthService } from "@/services/authService";
+import { UserService, UserProfile } from "@/services/userService";
 
 export default function RegisterBusinessScreen() {
   const router = useRouter();
@@ -21,6 +24,27 @@ export default function RegisterBusinessScreen() {
     phone: "",
     website: "",
   });
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const user = AuthService.getCurrentUser();
+      if (!user) {
+        setProfileLoading(false);
+        return;
+      }
+      try {
+        const profile = await UserService.getOwnProfile(user.uid);
+        setUserProfile(profile);
+      } catch (err) {
+        console.error("Failed to fetch user profile:", err);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    fetchUser();
+  }, []);
 
   const handleRegister = async () => {
     if (!form.businessName || !form.phone || !form.address || !form.description) {
@@ -62,6 +86,15 @@ export default function RegisterBusinessScreen() {
     }
   };
 
+  if (profileLoading) {
+    return (
+      <SafeAreaView style={[styles.root, { alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color="#EF4444" />
+      </SafeAreaView>
+    );
+  }
+
+  // Removing the premium requirement blocker so any user can register a business for free
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <SafeAreaView style={styles.root} edges={["top"]}>
@@ -200,5 +233,27 @@ const styles = StyleSheet.create({
   infoText: { flex: 1, fontSize: 13, color: "#1E3A8A", marginLeft: 12, lineHeight: 20 },
   footer: { padding: 16, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#E5E7EB" },
   submitBtn: { backgroundColor: "#EF4444", height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", shadowColor: "#EF4444", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  submitBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" }
+  submitBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+
+  // Premium UI Styles
+  premiumHeader: { flexDirection: "row", paddingHorizontal: 20, paddingTop: 10, justifyContent: "flex-end" },
+  premiumBackBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.1)", alignItems: "center", justifyContent: "center" },
+  premiumScroll: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
+  premiumHero: { alignItems: "center", marginTop: 20 },
+  premiumIconBg: { width: 100, height: 100, borderRadius: 32, alignItems: "center", justifyContent: "center", marginBottom: 24, shadowColor: "#6366F1", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
+  premiumBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(245, 158, 11, 0.2)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, marginBottom: 16, borderWidth: 1, borderColor: "rgba(245, 158, 11, 0.3)" },
+  premiumBadgeText: { color: "#F59E0B", fontSize: 12, fontWeight: "700", marginLeft: 6, textTransform: "uppercase", letterSpacing: 0.5 },
+  premiumTitle: { fontSize: 32, fontWeight: "800", color: "#FFFFFF", marginBottom: 12, textAlign: "center" },
+  premiumSubtitle: { fontSize: 16, color: "#94A3B8", textAlign: "center", lineHeight: 24, paddingHorizontal: 10 },
+  
+  benefitsContainer: { marginTop: 40, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 24, padding: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
+  benefitRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 24 },
+  benefitIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(16, 185, 129, 0.2)", alignItems: "center", justifyContent: "center", marginRight: 16, marginTop: 2 },
+  benefitTitle: { fontSize: 16, fontWeight: "700", color: "#F8FAFC", marginBottom: 4 },
+  benefitDesc: { fontSize: 14, color: "#94A3B8", lineHeight: 20 },
+  
+  premiumFooter: { paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 10 : 24, paddingTop: 20, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.05)", backgroundColor: "rgba(2, 6, 23, 0.8)" },
+  premiumCancelText: { color: "#64748B", fontSize: 13, textAlign: "center", marginBottom: 16 },
+  premiumBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 18, borderRadius: 100, shadowColor: "#4F46E5", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 15, elevation: 8 },
+  premiumBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800", marginRight: 8 },
 });

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Store, Trash2, Users } from 'lucide-react';
+import type { QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
 interface Community {
   id: string;
@@ -17,8 +19,8 @@ export default function Communities() {
 
   useEffect(() => {
     const q = query(collection(db, "communities"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Community));
+    const unsub = onSnapshot(q, (snap: QuerySnapshot<DocumentData>) => {
+      const list = mapQuerySnapshot<Community>(snap, withDocId);
       setCommunities(list);
       setLoading(false);
     });

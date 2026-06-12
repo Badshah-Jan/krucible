@@ -14,6 +14,14 @@ import { db, auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import type { QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { mapQuerySnapshot, withDocId } from './utils/firestore';
+
+interface PendingProviderAction {
+  id: string;
+  name?: string;
+  verified?: boolean;
+}
 
 function Sidebar() {
   const location = useLocation();
@@ -101,17 +109,17 @@ function Dashboard() {
   const [sosCount, setSosCount] = useState(0);
   const [communityCount, setCommunityCount] = useState(0);
   const [verifiedProviderCount, setVerifiedProviderCount] = useState(0);
-  const [pendingActions, setPendingActions] = useState<any[]>([]);
+  const [pendingActions, setPendingActions] = useState<PendingProviderAction[]>([]);
 
   React.useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => setUserCount(snap.size));
-    const unsubSos = onSnapshot(query(collection(db, "sos_alerts"), where("status", "==", "active")), (snap) => setSosCount(snap.size));
-    const unsubComm = onSnapshot(collection(db, "communities"), (snap) => setCommunityCount(snap.size));
-    const unsubProv = onSnapshot(query(collection(db, "services"), where("verified", "==", true)), (snap) => setVerifiedProviderCount(snap.size));
+    const unsubUsers = onSnapshot(collection(db, "users"), (snap: QuerySnapshot<DocumentData>) => setUserCount(snap.size));
+    const unsubSos = onSnapshot(query(collection(db, "sos_alerts"), where("status", "==", "active")), (snap: QuerySnapshot<DocumentData>) => setSosCount(snap.size));
+    const unsubComm = onSnapshot(collection(db, "communities"), (snap: QuerySnapshot<DocumentData>) => setCommunityCount(snap.size));
+    const unsubProv = onSnapshot(query(collection(db, "services"), where("verified", "==", true)), (snap: QuerySnapshot<DocumentData>) => setVerifiedProviderCount(snap.size));
     
     // Action Center listener
-    const unsubPending = onSnapshot(query(collection(db, "services"), where("verified", "==", false)), (snap) => {
-      const pending = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const unsubPending = onSnapshot(query(collection(db, "services"), where("verified", "==", false)), (snap: QuerySnapshot<DocumentData>) => {
+      const pending = mapQuerySnapshot<PendingProviderAction>(snap, withDocId);
       setPendingActions(pending.slice(0, 5)); // show top 5
     });
 

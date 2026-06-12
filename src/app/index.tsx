@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { View, StyleSheet, Dimensions, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppStore } from '@/store/appStore';
+import { AuthService } from '@/services/authService';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -33,6 +34,12 @@ export default function Index() {
 
     // Enforce a minimum 2.5 seconds splash duration
     const timer = setTimeout(() => {
+      const firebaseUser = AuthService.getCurrentUser();
+      if (firebaseUser && !AuthService.isAccountAccessAllowed(firebaseUser)) {
+        router.replace('/(auth)/verify-email');
+        return;
+      }
+
       if (!isAuthenticated) {
         router.replace('/(auth)/login');
         return;

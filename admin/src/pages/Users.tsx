@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Shield, Ban, Trash2, CheckCircle, Users as UsersIcon } from 'lucide-react';
+import { Ban, Trash2, CheckCircle, Users as UsersIcon } from 'lucide-react';
+import type { QuerySnapshot, DocumentData, FirestoreError } from 'firebase/firestore';
+import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
 interface User {
   id: string;
@@ -20,11 +22,11 @@ export default function Users() {
   useEffect(() => {
     setLoading(true);
     const q = query(collection(db, "users"));
-    const unsub = onSnapshot(q, (snap) => {
-      const userList = snap.docs.map(d => ({ id: d.id, ...d.data() } as User));
+    const unsub = onSnapshot(q, (snap: QuerySnapshot<DocumentData>) => {
+      const userList = mapQuerySnapshot<User>(snap, withDocId);
       setUsers(userList);
       setLoading(false);
-    }, (error) => {
+    }, (error: FirestoreError) => {
       console.error(error);
       setLoading(false);
     });

@@ -13,7 +13,8 @@ export default function NetworkLockdown() {
     const unsubscribe = NetInfo.addEventListener(state => {
       // isInternetReachable is more accurate but can be null initially.
       // We check if it's explicitly false or if isConnected is false.
-      const hasConnection = state.isConnected && state.isInternetReachable !== false;
+      const hasConnection =
+        state.isConnected === true && state.isInternetReachable !== false;
       setIsConnected(hasConnection);
     });
 

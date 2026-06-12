@@ -7,7 +7,6 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import {
     Alert,
-    Image,
     Modal,
     Pressable,
     Share,
@@ -17,6 +16,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { Image } from "expo-image";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -61,12 +61,12 @@ interface PostCardProps {
   onCommentPress?: () => void;
 }
 
-export default function PostCard({
+const PostCard = ({
   post,
   onPress,
   onLikePress,
   onCommentPress,
-}: PostCardProps) {
+}: PostCardProps) => {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = React.useState(false);
   const [isOptionsVisible, setIsOptionsVisible] = React.useState(false);
@@ -142,7 +142,13 @@ export default function PostCard({
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           {hasAvatarUrl ? (
-            <Image source={{ uri: authorAvatar }} style={styles.avatar} />
+            <Image 
+              source={{ uri: authorAvatar }} 
+              style={styles.avatar} 
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={200}
+            />
           ) : (
             <View
               style={[styles.avatarInitials, { backgroundColor: avatarColor }]}
@@ -200,26 +206,28 @@ export default function PostCard({
       {/* Footer Actions */}
       <View style={styles.actionBar}>
         <View style={{ flexDirection: "row", gap: 16 }}>
-          <Pressable
-            onPress={onLikePress}
-            hitSlop={12}
-            style={styles.actionBtn}
-          >
-            {/* Outline-only heart icon as shown in mockup */}
-            <Ionicons
-              name="heart-outline"
-              size={18}
-              color={post.likedByMe ? T.primary : T.textSecondary}
-            />
-            <Text
-              style={[
-                styles.actionText,
-                post.likedByMe && { color: T.primary },
-              ]}
+          {!post.isSos && (
+            <Pressable
+              onPress={onLikePress}
+              hitSlop={12}
+              style={styles.actionBtn}
             >
-              {post.likes > 0 ? post.likes : "0"}
-            </Text>
-          </Pressable>
+              {/* Outline-only heart icon as shown in mockup */}
+              <Ionicons
+                name="heart-outline"
+                size={18}
+                color={post.likedByMe ? T.primary : T.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.actionText,
+                  post.likedByMe && { color: T.primary },
+                ]}
+              >
+                {post.likes > 0 ? post.likes : "0"}
+              </Text>
+            </Pressable>
+          )}
 
           <Pressable
             onPress={onCommentPress}
@@ -625,4 +633,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
   },
+});
+
+export default React.memo(PostCard, (prev, next) => {
+  // Deep comparison of essential properties to prevent unnecessary re-renders
+  if (prev.post.id !== next.post.id) return false;
+  if (prev.post.likes !== next.post.likes) return false;
+  if (prev.post.commentsCount !== next.post.commentsCount) return false;
+  if (prev.post.likedByMe !== next.post.likedByMe) return false;
+  if (prev.post.title !== next.post.title) return false;
+  if (prev.post.description !== next.post.description) return false;
+  if (prev.post.userAvatar !== next.post.userAvatar) return false;
+  if (prev.post.userName !== next.post.userName) return false;
+  // If all matched, it doesn't need to re-render
+  return true;
 });

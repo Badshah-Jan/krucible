@@ -81,7 +81,7 @@ export default function SOSScreen() {
     try {
       const user = AuthService.getCurrentUser();
       if (!user) throw new Error("Not authenticated");
-      const profile = await UserService.getUser(user.uid);
+      const profile = await UserService.getOwnProfile(user.uid);
       
       const activeCommunityId = community?.communityId || profile?.communityId;
       if (!activeCommunityId) throw new Error("Could not determine your community. Please restart the app.");
@@ -92,7 +92,7 @@ export default function SOSScreen() {
       if (!lat || !lng) {
          throw new Error("Could not determine your GPS location. Please ensure location services are enabled.");
       }
-      const place = await LocationService.reverseGeocode(coordinates.lat, coordinates.lng);
+      const place = await LocationService.reverseGeocode(lat, lng);
 
       await SosService.createSOS({
         creatorId: user.uid,
@@ -201,10 +201,10 @@ export default function SOSScreen() {
                   onPress={() => setSelectedType(et.type)}
                   activeOpacity={0.8}
                 >
-                  <View style={[styles.iconWrap, isSelected ? { backgroundColor: '#FFFFFF33' } : { backgroundColor: '#1F2937' }]}>
-                    <Ionicons name={et.icon} size={28} color={isSelected ? '#FFFFFF' : et.color} />
+                  <View style={[styles.iconWrap, isSelected && { backgroundColor: '#FFFFFF33' }]}>
+                    <Ionicons name={et.icon} size={22} color={isSelected ? '#FFFFFF' : et.color} />
                   </View>
-                  <Text style={[styles.typeText, isSelected && { color: '#FFFFFF', fontWeight: '800' }]}>{et.type}</Text>
+                  <Text style={[styles.typeText, isSelected && { color: '#FFFFFF', fontWeight: '800' }]} numberOfLines={2}>{et.type}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -418,55 +418,62 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 8,
   },
   typeCard: {
-    width: "48%",
+    width: "31%", // 3 columns
     backgroundColor: "#1F2937",
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 16,
+    padding: 12,
     alignItems: "center",
     borderWidth: 2,
     borderColor: "transparent",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    marginBottom: 4,
   },
   iconWrap: {
-    width: 64, height: 64, borderRadius: 32,
+    width: 44, height: 44, borderRadius: 22,
     alignItems: "center", justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 8,
+    backgroundColor: "#111827", // Darker contrast
   },
-  typeText: { color: "#D1D5DB", fontSize: 14, fontWeight: "600", textAlign: "center" },
+  typeText: { color: "#D1D5DB", fontSize: 11, fontWeight: "600", textAlign: "center", minHeight: 30 },
 
-  radiusSection: { marginTop: 32 },
-  sectionTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "800", marginBottom: 6 },
-  sectionSub: { color: "#9CA3AF", fontSize: 14, marginBottom: 20 },
-  radiusRow: { flexDirection: "row", gap: 10, marginBottom: 32 },
+  radiusSection: { marginTop: 24 },
+  sectionTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "800", marginBottom: 4 },
+  sectionSub: { color: "#9CA3AF", fontSize: 13, marginBottom: 16 },
+  radiusRow: { flexDirection: "row", gap: 8, marginBottom: 24 },
   radiusBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 14,
+    flex: 1, paddingVertical: 10, borderRadius: 10,
     backgroundColor: "#1F2937", alignItems: "center",
-    borderWidth: 2, borderColor: "#374151"
+    borderWidth: 1.5, borderColor: "#374151"
   },
-  radiusText: { color: "#D1D5DB", fontWeight: "700", fontSize: 15 },
+  radiusText: { color: "#D1D5DB", fontWeight: "700", fontSize: 13 },
   radiusTextActive: { color: "#FFFFFF" },
 
   broadcastBtn: {
     backgroundColor: "#EF4444",
-    borderRadius: 100,
-    paddingVertical: 18,
+    borderRadius: 16,
+    paddingVertical: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    shadowColor: "#EF4444",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   broadcastBtnText: {
     color: "#FFFFFF",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
 
   // Active Radar Styles

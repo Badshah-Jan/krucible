@@ -55,7 +55,7 @@ export default function CreatePostScreen() {
       try {
         const user = AuthService.getCurrentUser();
         if (user) {
-          const profile = await UserService.getUser(user.uid);
+          const profile = await UserService.getOwnProfile(user.uid);
           setUserProfile(profile);
         }
       } catch (err) {
@@ -76,7 +76,7 @@ export default function CreatePostScreen() {
       const user = AuthService.getCurrentUser();
       if (!user) throw new Error('Not authenticated');
 
-      const profile = userProfile || await UserService.getUser(user.uid);
+      const profile = userProfile || await UserService.getOwnProfile(user.uid);
       if (!profile) throw new Error('User profile not found');
 
       const zustandCoords = useAppStore.getState().coordinates;

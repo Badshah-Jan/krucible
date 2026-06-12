@@ -89,7 +89,7 @@ export default function PostDetailScreen() {
       setIsSubmitting(true);
       const user = AuthService.getCurrentUser();
       if (!user) throw new Error('User not authenticated');
-      const userProfile = await UserService.getUser(user.uid);
+      const userProfile = await UserService.getOwnProfile(user.uid);
       if (!userProfile) throw new Error('User profile not found');
       const commentPayload: any = {
         userId: user.uid,

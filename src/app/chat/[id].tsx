@@ -7,7 +7,6 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Image,
   Alert,
   ActionSheetIOS,
   Clipboard,
@@ -17,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { Image } from 'expo-image';
 
 import Text from '@/components/common/Text';
 import GradientBg from '@/components/common/GradientBg';
@@ -88,6 +88,7 @@ export default function ChatDetailScreen() {
   const [feedError, setFeedError] = useState<string | null>(null);
   const [pendingMsgs, setPendingMsgs] = useState<ChatMessage[]>([]);
   const [otherUserPresence, setOtherUserPresence] = useState<{ isOnline: boolean; lastSeen: any; isDeleted?: boolean } | null>(null);
+  const [showStickers, setShowStickers] = useState(false);
 
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -262,6 +263,39 @@ export default function ChatDetailScreen() {
     }
   }, [inputText, currentUser, id, convMeta, stopTyping]);
 
+  const handleSendSticker = useCallback(async (sticker: string) => {
+    if (!currentUser?.uid || !id) return;
+    setShowStickers(false);
+
+    const optimistic: ChatMessage = {
+      id: `pending_${Date.now()}`,
+      type: 'sticker',
+      text: sticker,
+      senderId: currentUser.uid,
+      senderName: currentUser.name ?? currentUser.displayName ?? 'Neighbor',
+      senderAvatar: currentUser.photoURL,
+      createdAt: { toDate: () => new Date() },
+      status: 'pending',
+    };
+    setPendingMsgs((prev) => [...prev, optimistic]);
+
+    try {
+      const participants = convMeta?.participants ?? [];
+      await ChatService.sendMessage(id, {
+        type: 'sticker',
+        text: sticker,
+        senderId: currentUser.uid,
+        senderName: currentUser.name ?? currentUser.displayName ?? 'Neighbor',
+        senderAvatar: currentUser.photoURL ?? undefined,
+        replyTo: null,
+      }, participants);
+    } catch (err) {
+      setPendingMsgs((prev) =>
+        prev.map((p) => (p.id === optimistic.id ? { ...p, status: 'failed' } : p))
+      );
+    }
+  }, [currentUser, id, convMeta]);
+
   // ── Message actions ────────────────────────────────────────────────────────
   const handleLongPress = useCallback(
     (msg: ChatMessage) => {
@@ -359,7 +393,7 @@ export default function ChatDetailScreen() {
               onLongPress={() => handleLongPress(msg)}
               style={[
                 styles.bubble,
-                isSystem ? styles.systemBubble : isMe ? styles.myBubble : styles.theirBubble,
+                isSystem ? styles.systemBubble : msg.type === 'sticker' ? styles.stickerBubble : isMe ? styles.myBubble : styles.theirBubble,
                 isPending && { opacity: 0.6 },
                 isFailed && { borderWidth: 1, borderColor: '#EF4444' },
               ]}
@@ -386,6 +420,8 @@ export default function ChatDetailScreen() {
                     )}
                   </View>
                 </View>
+              ) : msg.type === "sticker" ? (
+                <Text style={styles.stickerText}>{msg.text}</Text>
               ) : msg.imageUrl ? (
                 <Image source={{ uri: msg.imageUrl }} style={styles.msgImage} />
               ) : (
@@ -481,12 +517,26 @@ export default function ChatDetailScreen() {
           </View>
 
           {otherUid ? (
-            <TouchableOpacity style={styles.headerBtn} onPress={handleBlockUser}>
-              <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity 
+                style={styles.headerIconBtn} 
+                onPress={() => Alert.alert("Coming Soon", "Voice calling will be available in a future update!")}
+              >
+                <Ionicons name="call" size={20} color="#3B82F6" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.headerIconBtn}
+                onPress={() => Alert.alert("Coming Soon", "Video calling will be available in a future update!")}
+              >
+                <Ionicons name="videocam" size={20} color="#3B82F6" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.headerIconBtn} onPress={handleBlockUser}>
+                <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           ) : (
-            <TouchableOpacity style={styles.headerBtn}>
-              <Ionicons name="information-circle-outline" size={20} color="#FFFFFF" />
+            <TouchableOpacity style={styles.headerIconBtn}>
+              <Ionicons name="information-circle-outline" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           )}
         </View>
@@ -524,6 +574,17 @@ export default function ChatDetailScreen() {
             />
           )}
 
+          {/* ── Sticker Sheet ── */}
+          {showStickers && (
+            <View style={styles.stickerSheet}>
+              {['🐶', '🐱', '🐼', '💖', '🎉', '🚀', '✨', '💯', '🔥', '🍔', '🍕', '☕', '😂', '👍', '👋', '👀'].map((emoji) => (
+                <TouchableOpacity key={emoji} style={styles.stickerItem} onPress={() => handleSendSticker(emoji)}>
+                  <Text style={styles.stickerItemText}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {/* ── Input ── */}
           {otherUserPresence?.isDeleted ? (
             <View style={[styles.inputArea, { justifyContent: 'center', paddingVertical: 20 }]}>
@@ -552,15 +613,24 @@ export default function ChatDetailScreen() {
                   );
                 }}
               >
-                <Ionicons name="add" size={22} color="#9CA3AF" />
+                <Ionicons name="add" size={24} color="#9CA3AF" />
               </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.attachBtn}
+                onPress={() => setShowStickers(!showStickers)}
+              >
+                <Ionicons name={showStickers ? "happy" : "happy-outline"} size={22} color={showStickers ? "#0B84FF" : "#9CA3AF"} />
+              </TouchableOpacity>
+
               <TextInput
                 style={styles.input}
-                placeholder="Type a message…"
+                placeholder="Message..."
                 placeholderTextColor="#6B7280"
                 value={inputText}
                 onChangeText={handleInputChange}
                 onBlur={stopTyping}
+                onFocus={() => setShowStickers(false)}
                 multiline
                 maxLength={1000}
               />
@@ -581,77 +651,87 @@ export default function ChatDetailScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  errorText: { color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center' },
-  emptyText: { color: 'rgba(255,255,255,0.3)', fontSize: 14, marginTop: 8 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  errorText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
+  emptyText: { color: 'rgba(255,255,255,0.4)', fontSize: 15, marginTop: 8 },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(11, 15, 25, 0.4)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    zIndex: 10,
   },
   headerBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10, gap: 10 },
+  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 4, gap: 12 },
   headerAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(37,99,235,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.4)',
   },
-  headerName: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  headerSub: { color: '#10B981', fontSize: 11, marginTop: 1 },
+  headerName: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
+  headerSub: { color: '#10B981', fontSize: 12, marginTop: 2, fontWeight: '500' },
 
-  msgList: { padding: 12, paddingBottom: 8 },
+  msgList: { padding: 12, paddingBottom: 16 },
 
-  dateSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 16, paddingHorizontal: 8 },
-  dateLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
-  dateLabel: { color: 'rgba(255,255,255,0.3)', fontSize: 11, marginHorizontal: 12, fontWeight: '600' },
+  dateSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, paddingHorizontal: 16 },
+  dateLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  dateLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginHorizontal: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
 
-  msgWrapper: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 6 },
+  msgWrapper: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 8 },
   myWrapper: { justifyContent: 'flex-end' },
   theirWrapper: { justifyContent: 'flex-start' },
-  systemWrapper: { justifyContent: 'center' },
+  systemWrapper: { justifyContent: 'center', marginVertical: 8 },
 
   sosAlertCard: {
     backgroundColor: '#EF4444',
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
-    width: 250,
+    width: 260,
   },
   sosHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#DC2626',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
   },
   sosTitle: {
     color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 12,
-    letterSpacing: 1,
+    fontSize: 13,
+    letterSpacing: 1.5,
   },
-  sosBody: {
-    padding: 12,
-  },
+  sosBody: { padding: 14 },
   sosText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    lineHeight: 20,
-    marginBottom: 12,
+    lineHeight: 22,
+    marginBottom: 14,
   },
   sosActions: {
     borderTopWidth: 1,
@@ -660,82 +740,128 @@ const styles = StyleSheet.create({
   },
   sosBtn: {
     backgroundColor: '#FFFFFF',
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
     alignItems: 'center',
   },
   sosBtnText: {
     color: '#EF4444',
     fontWeight: '800',
-    fontSize: 13,
+    fontSize: 14,
   },
-  avatarCol: { width: 30, marginRight: 8 },
-  avatar: { width: 28, height: 28, borderRadius: 14 },
-  avatarFallback: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  avatarFallbackText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  avatarPlaceholder: { width: 28, height: 28 },
+  
+  avatarCol: { width: 32, marginRight: 10 },
+  avatar: { width: 32, height: 32, borderRadius: 16 },
+  avatarFallback: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  avatarFallbackText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  avatarPlaceholder: { width: 32, height: 32 },
 
-  msgContent: { maxWidth: '76%' },
-  senderName: { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 3, marginLeft: 12 },
+  msgContent: { maxWidth: '78%' },
+  senderName: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 4, marginLeft: 14, fontWeight: '600' },
 
-  bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
-  myBubble: { backgroundColor: '#2563EB', borderBottomRightRadius: 4 },
-  theirBubble: { backgroundColor: 'rgba(255,255,255,0.1)', borderBottomLeftRadius: 4 },
-  systemBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
-  msgText: { color: '#FFFFFF', fontSize: 14, lineHeight: 20 },
-  msgImage: { width: 200, height: 200, borderRadius: 12 },
-  msgMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 },
-  msgTime: { color: 'rgba(255,255,255,0.4)', fontSize: 10 },
+  bubble: { 
+    borderRadius: 20, 
+    paddingHorizontal: 16, 
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  myBubble: { backgroundColor: '#0B84FF', borderBottomRightRadius: 4 },
+  theirBubble: { backgroundColor: '#262628', borderBottomLeftRadius: 4 },
+  systemBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0, shadowOpacity: 0, elevation: 0 },
+  stickerBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0, shadowOpacity: 0, elevation: 0 },
+  
+  msgText: { color: '#FFFFFF', fontSize: 16, lineHeight: 22 },
+  stickerText: { fontSize: 72, lineHeight: 80 },
+  msgImage: { width: 220, height: 220, borderRadius: 16 },
+  
+  msgMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 6, opacity: 0.7 },
+  msgTime: { color: '#FFFFFF', fontSize: 11, fontWeight: '500' },
 
-  reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4, marginLeft: 4 },
+  reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, marginLeft: 4 },
   reactionChip: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 100,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: '#3A3A3C',
   },
-  reactionChipActive: { backgroundColor: 'rgba(37,99,235,0.25)', borderColor: '#2563EB' },
-  reactionText: { color: '#FFFFFF', fontSize: 12 },
+  reactionChipActive: { backgroundColor: 'rgba(11, 132, 255, 0.2)', borderColor: '#0B84FF' },
+  reactionText: { color: '#FFFFFF', fontSize: 13 },
 
-  retryBtn: { marginTop: 4 },
-  retryText: { color: '#EF4444', fontSize: 11 },
+  retryBtn: { marginTop: 6, alignSelf: 'flex-end' },
+  retryText: { color: '#EF4444', fontSize: 12, fontWeight: '600' },
 
   inputArea: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
-    paddingTop: 8,
-    gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+    backgroundColor: '#1E1E1E',
+    borderTopWidth: 1,
+    borderTopColor: '#2C2C2E',
   },
   attachBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
   input: {
     flex: 1,
     minHeight: 40,
-    maxHeight: 110,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    maxHeight: 120,
+    backgroundColor: '#2C2C2E',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 10,
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
   },
   sendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#2563EB',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0B84FF',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 2,
+    shadowColor: '#0B84FF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  stickerSheet: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 16,
+    backgroundColor: '#1E1E1E',
+    borderTopWidth: 1,
+    borderTopColor: '#2C2C2E',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  stickerItem: {
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 30,
+  },
+  stickerItemText: {
+    fontSize: 32,
   },
 });

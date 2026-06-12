@@ -66,6 +66,14 @@ export const CATEGORIES: CategoryDef[] = [
     border: '#FDE68A',
     typeParam: 'lost',
   },
+  {
+    firestoreValue: 'Community Alert',
+    chipId: 'community_alert',
+    label: 'Community Alert',
+    color: '#E11D48',
+    bg: '#FFE4E6',
+    border: '#FDA4AF',
+  },
 ];
 
 /** Map a URL ?type param → canonical Firestore category value */

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, doc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, deleteDoc, type Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { MessageSquare, Trash2, EyeOff } from 'lucide-react';
+import { MessageSquare, Trash2 } from 'lucide-react';
+import type { QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
 interface Post {
   id: string;
@@ -9,7 +11,7 @@ interface Post {
   content: string;
   category: string;
   userId: string;
-  createdAt?: any;
+  createdAt?: Timestamp;
 }
 
 export default function Posts() {
@@ -19,9 +21,9 @@ export default function Posts() {
   useEffect(() => {
     // Note: requires composite index for orderBy if not just listening to collection
     const q = query(collection(db, "posts"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Post));
-      list.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+    const unsub = onSnapshot(q, (snap: QuerySnapshot<DocumentData>) => {
+      const list = mapQuerySnapshot<Post>(snap, withDocId);
+      list.sort((a: Post, b: Post) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0));
       setPosts(list);
       setLoading(false);
     });

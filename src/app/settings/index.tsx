@@ -193,9 +193,9 @@ export default function SettingsScreen() {
       if (useCamera) {
         const perm = await ImagePicker.requestCameraPermissionsAsync();
         if (!perm.granted) {
-          Alert.alert(
+          UI.alert(
             "Permission Required",
-            "Camera permission is required to take a photo.",
+            "Camera permission is required to take a photo."
           );
           return;
         }
@@ -209,9 +209,9 @@ export default function SettingsScreen() {
       } else {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!perm.granted) {
-          Alert.alert(
+          UI.alert(
             "Permission Required",
-            "Gallery permission is required to choose a photo.",
+            "Gallery permission is required to choose a photo."
           );
           return;
         }
@@ -232,9 +232,9 @@ export default function SettingsScreen() {
           setIsSaving(true);
           try {
             await UserService.uploadProfilePicture(currentUser.uid, uri);
-            Alert.alert("Success", "Profile picture updated!");
+            UI.success("Success", "Profile picture updated!");
           } catch (error) {
-            Alert.alert("Error", "Failed to upload profile picture.");
+            UI.error("Error", "Failed to upload profile picture.");
           } finally {
             setIsSaving(false);
           }
@@ -242,62 +242,17 @@ export default function SettingsScreen() {
       }
     } catch (e) {
       console.error(e);
-      Alert.alert("Error", "Could not load image picker.");
+      UI.error("Error", "Could not load image picker.");
     }
   };
 
-  // ── Notification Preference Toggles (all persist to Firestore) ────────────
-  const toggleNotificationPref = async (
-    key: string,
-    value: boolean,
-    setter: (v: boolean) => void,
-  ) => {
-    setter(value);
-    if (currentUser?.uid) {
-      try {
-        await UserService.updateNotificationPreferences(currentUser.uid, {
-          [key]: value,
-        } as any);
-        // If master push toggle changed, update token registry
-        if (key === "pushEnabled") {
-          const NotificationService =
-            require("@/services/notificationService").default;
-          await NotificationService.handlePushToggleChange(
-            currentUser.uid,
-            value,
-          );
-        }
-      } catch (error) {
-        setter(!value); // Revert on failure
-        UI.toast("Error", "error", "Failed to update notification preference.");
-      }
-    }
-  };
-
-  // ── Privacy Toggles (all persist to Firestore) ────────────────────────────
-  const togglePrivacySetting = async (
-    key: keyof PrivacySettings,
-    value: boolean,
-    setter: (v: boolean) => void,
-  ) => {
-    setter(value);
-    if (currentUser?.uid) {
-      try {
-        await UserService.updatePrivacySettings(currentUser.uid, {
-          [key]: value,
-        });
-      } catch (error) {
-        setter(!value); // Revert on failure
-        Alert.alert("Error", "Failed to update privacy setting.");
-      }
-    }
-  };
+  // Removed individual toggle functions to batch save everything on handleSave
 
   // ── Save Profile (Name + Handle + Bio) ────────────────────────────────────
   const handleSave = async () => {
     if (isSaving) return;
     if (!name.trim()) {
-      Alert.alert("Error", "Name cannot be empty");
+      UI.error("Error", "Name cannot be empty");
       return;
     }
     setIsSaving(true);
@@ -309,17 +264,42 @@ export default function SettingsScreen() {
           handle: finalHandle,
           bio: bio.trim(),
         });
-        Alert.alert(
-          t("settings_saved", "Settings Saved"),
-          t(
-            "settings_saved_msg",
-            "Your profile has been updated successfully.",
-          ),
+
+        // Batch save Notification Preferences
+        await UserService.updateNotificationPreferences(currentUser.uid, {
+          pushEnabled: pushNotifications,
+          sos: sosNotifications,
+          messages: chatNotifications,
+          community: communityNotifications,
+          recommendations: recommendationNotifications,
+          lostAndFound: lostFoundNotifications,
+        } as any);
+
+        // Batch save Privacy Settings
+        await UserService.updatePrivacySettings(currentUser.uid, {
+          profileVisible,
+          activityVisible,
+          locationVisible,
+          distanceVisible,
+        });
+
+        // If master push toggle changed, update token registry
+        const NotificationService = require("@/services/notificationService").default;
+        await NotificationService.handlePushToggleChange(
+          currentUser.uid,
+          pushNotifications,
         );
+
+        UI.success(
+          t("settings_saved", "Settings Saved"),
+          t("settings_saved_msg", "Setting updated successfully")
+        );
+        
+        router.push("/(tabs)/profile" as any);
       }
     } catch (e) {
       console.error(e);
-      Alert.alert("Error", "Failed to save settings");
+      UI.error("Error", "Failed to save settings");
     } finally {
       setIsSaving(false);
     }
@@ -327,82 +307,59 @@ export default function SettingsScreen() {
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    Alert.alert(
+    UI.confirm(
       t("log_out", "Log Out"),
       t("log_out_msg", "Are you sure you want to log out?"),
-      [
-        { text: t("cancel", "Cancel"), style: "cancel" },
-        {
-          text: t("log_out", "Log Out"),
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await AuthService.logout();
-              logout();
-              router.replace("/(auth)/login");
-            } catch (error) {
-              console.error("Logout failed", error);
-              Alert.alert("Error", "Failed to log out. Please try again.");
-            }
-          },
-        },
-      ],
+      async () => {
+        try {
+          await AuthService.logout();
+          logout();
+          router.replace("/(auth)/login");
+        } catch (error) {
+          console.error("Logout failed", error);
+          UI.error("Error", "Failed to log out. Please try again.");
+        }
+      },
+      t("log_out", "Log Out"),
+      "warning"
     );
   };
 
   // ── Delete Account ─────────────────────────────────────────────────────────
   const handleDeleteAccount = () => {
-    Alert.alert(
+    UI.confirm(
       "Delete Account",
-      "Are you sure you want to permanently delete your account? This action cannot be undone and will delete all your data, posts, and settings.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            // Second confirmation
-            Alert.alert(
-              "Final Confirmation",
-              "This will immediately delete your account. Proceed?",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Yes, Delete",
-                  style: "destructive",
-                  onPress: async () => {
-                    try {
-                      setIsSaving(true);
-                      await AuthService.deleteAccount();
-                      logout();
-                      router.replace("/(auth)/login");
-                    } catch (error: any) {
-                      console.error("Delete Account failed", error);
-                      // Handle the requirement to re-authenticate for sensitive operations
-                      if (
-                        error?.code === "auth/requires-recent-login" ||
-                        error?.message?.includes("recent-login")
-                      ) {
-                        Alert.alert(
-                          "Authentication Required",
-                          "For security reasons, please log out and log back in to verify your identity before deleting your account.",
-                        );
-                      } else {
-                        Alert.alert(
-                          "Error",
-                          "Failed to delete account. Please try again.",
-                        );
-                      }
-                    } finally {
-                      setIsSaving(false);
-                    }
-                  },
-                },
-              ],
+      "Deleting your account will permanently remove your profile, posts, messages, businesses, services, media, reputation, and all associated data. This action cannot be undone.",
+      async () => {
+        try {
+          setIsSaving(true);
+          await AuthService.deleteAccount();
+          logout();
+          router.replace("/(auth)/login");
+        } catch (error: any) {
+          console.warn("Delete Account handled error:", error?.message || error);
+          // Handle the requirement to re-authenticate for sensitive operations
+          if (
+            error?.code === "auth/requires-recent-login" ||
+            error?.message?.includes("recent-login")
+          ) {
+            UI.alert(
+              "Authentication Required",
+              "For security reasons, please log out and log back in to verify your identity before deleting your account.",
+              "warning"
             );
-          },
-        },
-      ],
+          } else {
+            UI.error(
+              "Error",
+              "Failed to delete account. Please try again."
+            );
+          }
+        } finally {
+          setIsSaving(false);
+        }
+      },
+      "Permanently Delete Account",
+      "danger"
     );
   };
 
@@ -546,9 +503,7 @@ export default function SettingsScreen() {
                 value={pushNotifications}
                 type="switch"
                 color="#2563EB"
-                onToggle={(v) =>
-                  toggleNotificationPref("pushEnabled", v, setPushNotifications)
-                }
+                onToggle={setPushNotifications}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -558,9 +513,7 @@ export default function SettingsScreen() {
                 value={sosNotifications}
                 type="switch"
                 color="#EF4444"
-                onToggle={(v) =>
-                  toggleNotificationPref("sos", v, setSosNotifications)
-                }
+                onToggle={setSosNotifications}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -570,9 +523,7 @@ export default function SettingsScreen() {
                 value={chatNotifications}
                 type="switch"
                 color="#10B981"
-                onToggle={(v) =>
-                  toggleNotificationPref("messages", v, setChatNotifications)
-                }
+                onToggle={setChatNotifications}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -582,13 +533,7 @@ export default function SettingsScreen() {
                 value={communityNotifications}
                 type="switch"
                 color="#F59E0B"
-                onToggle={(v) =>
-                  toggleNotificationPref(
-                    "community",
-                    v,
-                    setCommunityNotifications,
-                  )
-                }
+                onToggle={setCommunityNotifications}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -598,13 +543,7 @@ export default function SettingsScreen() {
                 value={recommendationNotifications}
                 type="switch"
                 color="#8B5CF6"
-                onToggle={(v) =>
-                  toggleNotificationPref(
-                    "recommendations",
-                    v,
-                    setRecommendationNotifications,
-                  )
-                }
+                onToggle={setRecommendationNotifications}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -614,13 +553,7 @@ export default function SettingsScreen() {
                 value={lostFoundNotifications}
                 type="switch"
                 color="#D97706"
-                onToggle={(v) =>
-                  toggleNotificationPref(
-                    "lostAndFound",
-                    v,
-                    setLostFoundNotifications,
-                  )
-                }
+                onToggle={setLostFoundNotifications}
               />
             </View>
           </View>
@@ -670,9 +603,7 @@ export default function SettingsScreen() {
                 value={profileVisible}
                 type="switch"
                 color="#8B5CF6"
-                onToggle={(v) =>
-                  togglePrivacySetting("profileVisible", v, setProfileVisible)
-                }
+                onToggle={setProfileVisible}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -682,9 +613,7 @@ export default function SettingsScreen() {
                 value={activityVisible}
                 type="switch"
                 color="#6366F1"
-                onToggle={(v) =>
-                  togglePrivacySetting("activityVisible", v, setActivityVisible)
-                }
+                onToggle={setActivityVisible}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -694,9 +623,7 @@ export default function SettingsScreen() {
                 value={locationVisible}
                 type="switch"
                 color="#10B981"
-                onToggle={(v) =>
-                  togglePrivacySetting("locationVisible", v, setLocationVisible)
-                }
+                onToggle={setLocationVisible}
               />
               <View style={styles.divider} />
               <SettingRow
@@ -706,9 +633,7 @@ export default function SettingsScreen() {
                 value={distanceVisible}
                 type="switch"
                 color="#0EA5E9"
-                onToggle={(v) =>
-                  togglePrivacySetting("distanceVisible", v, setDistanceVisible)
-                }
+                onToggle={setDistanceVisible}
               />
             </View>
           </View>
@@ -759,22 +684,48 @@ export default function SettingsScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* ═══ Delete Account ═══ */}
-          <TouchableOpacity
-            style={[
-              styles.logoutBtn,
-              {
-                borderColor: "#EF4444",
-                backgroundColor: "#FFFFFF",
-                marginTop: 0,
-              },
-            ]}
-            onPress={handleDeleteAccount}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="trash-outline" size={18} color="#EF4444" />
-            <Text style={styles.logoutText}>Delete Account</Text>
-          </TouchableOpacity>
+          {/* ═══ Danger Zone ═══ */}
+          <View style={[styles.section, { marginTop: 24 }]}>
+            <Text style={[styles.sectionTitle, { color: "#EF4444" }]}>
+              {t("danger_zone", "DANGER ZONE")}
+            </Text>
+            <View style={[styles.card, { borderColor: "#FECACA", backgroundColor: "#FEF2F2" }]}>
+              <View style={{ padding: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <Ionicons name="warning" size={20} color="#EF4444" />
+                  <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: '800', color: "#991B1B" }}>
+                    Delete Account
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 13, color: "#991B1B", lineHeight: 18, marginBottom: 16, opacity: 0.9 }}>
+                  Permanently delete your profile, posts, messages, businesses, services, media, reputation, and all associated data. This action cannot be undone.
+                </Text>
+                
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#EF4444",
+                    borderRadius: 12,
+                    paddingVertical: 14,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    shadowColor: "#EF4444",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 8,
+                    elevation: 3,
+                  }}
+                  onPress={handleDeleteAccount}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="trash" size={18} color="#FFFFFF" />
+                  <Text style={{ color: "#FFFFFF", fontWeight: "800", marginLeft: 8, fontSize: 15 }}>
+                    Permanently Delete Account
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
 
           {/* Footer Info */}
           <Text style={styles.footerText}>AasPaas v1.0.0 (Build 42)</Text>
@@ -850,15 +801,15 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 22,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 6,
-    elevation: 1.5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   avatarSection: {
     alignItems: "center",
@@ -941,16 +892,16 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   settingLabel: {
-    color: "#4B5563",
-    fontSize: 13,
-    fontWeight: "700",
+    color: "#374151",
+    fontSize: 15,
+    fontWeight: "600",
     flex: 1,
   },
   settingSubtitle: {
-    color: "#9CA3AF",
-    fontSize: 10,
-    fontWeight: "500",
-    marginTop: 1,
+    color: "#6B7280",
+    fontSize: 12,
+    fontWeight: "400",
+    marginTop: 2,
   },
   valueRow: {
     flexDirection: "row",

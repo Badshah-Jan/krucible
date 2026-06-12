@@ -15,6 +15,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  limit,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import {
@@ -26,6 +27,8 @@ import {
 import type { NotificationType } from "./notificationService";
 import NotificationService from "./notificationService";
 import { UserService } from "./userService";
+import { SecurityService } from "./securityService";
+import { sanitizeText } from "@/utils/security";
 
 export interface Post {
   id?: string;
@@ -56,6 +59,12 @@ export interface Post {
   distanceKm?: number;
   distanceLabel?: string;
   sponsored?: boolean;
+  /** Client-side flag for emergency/SOS activity cards */
+  isSos?: boolean;
+  /** Linked SOS alert id when isSos is true */
+  originalId?: string;
+  status?: string;
+  expiresAt?: any;
 }
 
 export class PostService {
@@ -87,8 +96,19 @@ export class PostService {
     >,
   ): Promise<string> {
     try {
+      await SecurityService.enforceRateLimit("post_create");
+
+      if (postData.category?.toLowerCase() === "community alert") {
+        const user: any = await UserService.getUser(postData.userId);
+        if (user?.role !== "superadmin" && user?.role !== "admin" && user?.role !== "moderator") {
+          throw new Error("Only authorized moderators can create Community Alerts.");
+        }
+      }
+
       const docRef = await addDoc(collection(db, "posts"), {
         ...postData,
+        title: sanitizeText(postData.title, 200),
+        description: sanitizeText(postData.description, 5000),
         likesCount: 0,
         commentsCount: 0,
         likedBy: [],
@@ -225,19 +245,30 @@ export class PostService {
     userLng: number | undefined,
     callback: (posts: Post[]) => void,
     onError?: (error: Error) => void,
+    limitCount: number = 50,
   ): () => void {
     const q = query(
       collection(db, "posts"),
       where("communityId", "==", communityId),
       orderBy("createdAt", "desc"),
+      limit(limitCount)
     );
 
     return onSnapshot(
       q,
       (snapshot: any) => {
-        const posts = snapshot.docs.map(
+        let posts = snapshot.docs.map(
           (d: any) => ({ id: d.id, ...d.data() }) as Post,
         );
+
+        const now = Date.now();
+        posts = posts.filter((p: any) => {
+          if (p.category?.toLowerCase() === 'community alert' && p.expiresAt) {
+            const exp = p.expiresAt.toDate ? p.expiresAt.toDate().getTime() : new Date(p.expiresAt).getTime();
+            if (now > exp) return false;
+          }
+          return true;
+        });
 
         if (userLat !== undefined && userLng !== undefined) {
           callback(
@@ -260,7 +291,7 @@ export class PostService {
         }
       },
       (error: any) => {
-        console.error("Error subscribing to posts:", error);
+        console.warn("Subscription warning (posts):", error?.message || error);
         if (onError) onError(error);
       },
     );
@@ -567,7 +598,7 @@ export class PostService {
         callback(posts);
       },
       (error: any) => {
-        console.error("Error subscribing to user posts:", error);
+        console.warn("Subscription warning (user posts):", error?.message || error);
       },
     );
   }

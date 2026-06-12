@@ -11,13 +11,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-
 import GradientBg from '@/components/common/GradientBg';
 import Text from '@/components/common/Text';
-import { db } from '@/services/firebase';
 import { AuthService } from '@/services/authService';
-import { UserService, UserProfile } from '@/services/userService';
+import { UserService, UserProfile, PublicUserProfile } from '@/services/userService';
 import { ChatService } from '@/services/chatService';
 import { useAppStore } from '@/store/appStore';
 
@@ -42,7 +39,7 @@ export default function NewChatScreen() {
   const community = useAppStore((s) => s.community);
 
   const [search, setSearch] = useState('');
-  const [contacts, setContacts] = useState<UserProfile[]>([]);
+  const [contacts, setContacts] = useState<PublicUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -51,7 +48,7 @@ export default function NewChatScreen() {
   useEffect(() => {
     const auth = AuthService.getCurrentUser();
     if (!auth) return;
-    UserService.getUser(auth.uid).then(setCurrentUser).catch(console.error);
+    UserService.getOwnProfile(auth.uid).then(setCurrentUser).catch(console.error);
   }, []);
 
   // ── Load community members from Firestore ──────────────────────────────────
@@ -67,14 +64,8 @@ export default function NewChatScreen() {
     const load = async () => {
       try {
         setLoading(true);
-        const q = query(
-          collection(db, 'users'),
-          where('communityId', '==', communityId)
-        );
-        const snap = await getDocs(q);
-        const members = snap.docs
-          .map((d: any) => d.data() as UserProfile)
-          .filter((u: any) => u.uid !== authUid); // exclude self
+        const members = (await UserService.getUsersByCommunity(communityId))
+          .filter((u) => u.uid !== authUid);
         setContacts(members);
       } catch (err) {
         console.error('Failed to load community members:', err);
@@ -92,7 +83,7 @@ export default function NewChatScreen() {
   );
 
   // ── Start a DM conversation ────────────────────────────────────────────────
-  const handleSelect = async (contact: UserProfile) => {
+  const handleSelect = async (contact: PublicUserProfile) => {
     const auth = AuthService.getCurrentUser();
     if (!auth || starting) return;
 

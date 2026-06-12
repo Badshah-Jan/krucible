@@ -47,27 +47,30 @@ export default function ConfirmationModal() {
           <Text style={styles.title}>{modalConfig.title}</Text>
           <Text style={styles.message}>{modalConfig.message}</Text>
           
-          <View style={styles.actionContainer}>
-            {modalConfig.showCancel && (
-              <TouchableOpacity 
-                style={styles.cancelBtn} 
-                onPress={handleCancel}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.cancelText}>{modalConfig.cancelText || 'Cancel'}</Text>
-              </TouchableOpacity>
-            )}
-            
+          <View style={[
+            styles.actionContainer, 
+            modalConfig.confirmText && modalConfig.confirmText.length > 15 ? { flexDirection: 'column', gap: 8 } : { flexDirection: 'row', gap: 12 }
+          ]}>
             <TouchableOpacity 
               style={[
                 styles.confirmBtn, 
                 modalConfig.type === 'danger' ? { backgroundColor: '#EF4444' } : { backgroundColor: '#2563EB' }
               ]} 
               onPress={handleConfirm}
-              activeOpacity={0.7}
+              activeOpacity={0.8}
             >
               <Text style={styles.confirmText}>{modalConfig.confirmText || 'OK'}</Text>
             </TouchableOpacity>
+
+            {modalConfig.showCancel && (
+              <TouchableOpacity 
+                style={styles.cancelBtn} 
+                onPress={handleCancel}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cancelText}>{modalConfig.cancelText || 'Cancel'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </BlurView>
@@ -124,12 +127,13 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   cancelBtn: {
-    flex: 1,
     paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 12,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: '45%',
   },
   cancelText: {
     color: '#4B5563',
@@ -137,11 +141,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   confirmBtn: {
-    flex: 1,
     paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: '45%',
   },
   confirmText: {
     color: '#FFFFFF',

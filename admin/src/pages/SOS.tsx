@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AlertTriangle, Clock, MapPin, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Clock, MapPin, CheckCircle } from 'lucide-react';
+import type { QuerySnapshot, DocumentData, FirestoreError, Timestamp } from 'firebase/firestore';
+import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
 interface SOSAlert {
   id: string;
@@ -9,7 +11,7 @@ interface SOSAlert {
   creatorName: string;
   communityId: string;
   status: 'active' | 'responding' | 'resolved' | 'expired';
-  createdAt: any;
+  createdAt?: Timestamp;
   location: { lat: number; lng: number };
 }
 
@@ -21,17 +23,17 @@ export default function SOSCenter() {
     // Real-time listener for ALL SOS alerts across communities
     // In production, this should be paginated or limited to active status
     const q = query(collection(db, "sos_alerts"));
-    const unsub = onSnapshot(q, (snap) => {
-      const alertList = snap.docs.map(d => ({ id: d.id, ...d.data() } as SOSAlert));
+    const unsub = onSnapshot(q, (snap: QuerySnapshot<DocumentData>) => {
+      const alertList = mapQuerySnapshot<SOSAlert>(snap, withDocId);
       // Sort by active first, then newest
-      alertList.sort((a, b) => {
+      alertList.sort((a: SOSAlert, b: SOSAlert) => {
         if (a.status === 'active' && b.status !== 'active') return -1;
         if (b.status === 'active' && a.status !== 'active') return 1;
-        return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
+        return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0);
       });
       setAlerts(alertList);
       setLoading(false);
-    }, (error) => {
+    }, (error: FirestoreError) => {
       console.error(error);
       setLoading(false);
     });

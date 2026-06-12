@@ -3,40 +3,45 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-    Alert,
-    Dimensions,
-    Linking,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  Linking,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 import { useLocationGuard } from "@/hooks/useLocationGuard";
 import { useNotifications } from "@/hooks/useNotifications";
 import { AuthService } from "@/services/authService";
 import { PostService } from "@/services/postService";
+import { SosService } from "@/services/sosService";
 import { UserService } from "@/services/userService";
 import { useAppStore } from "@/store/appStore";
+import { formatDistance, haversineDistance } from "@/utils/distance";
 
 const { width } = Dimensions.get("window");
+const PX = 16; // Standard padding
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-  bg: "#F8F9FA",
+  bg: "#FFFFFF",
   card: "#FFFFFF",
   text: "#111827",
   textSecondary: "#6B7280",
-  border: "#E5E7EB",
+  border: "#F3F4F6",
   primary: "#EF4444",
-  blue: "#2563EB",
-  orange: "#D97706",
+  blue: "#3B82F6",
+  orange: "#F59E0B",
   green: "#10B981",
-  purple: "#7C3AED",
+  purple: "#8B5CF6",
+  surface: "#F9FAFB",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,17 +65,6 @@ function openMaps(lat: number, lng: number, label?: string) {
   );
 }
 
-function catColor(category: string): string {
-  const c = category?.toLowerCase();
-  if (c === "emergency") return T.primary;
-  if (c === "help") return T.blue;
-  if (c === "services") return T.green;
-  if (c === "food") return T.orange;
-  if (c === "recommendations") return T.purple;
-  if (c?.includes("lost")) return T.orange;
-  return T.textSecondary;
-}
-
 // ─── Radius options ───────────────────────────────────────────────────────────
 const RADIUS_OPTIONS = [1, 3, 5, 10] as const;
 type RadiusKm = (typeof RADIUS_OPTIONS)[number];
@@ -79,181 +73,238 @@ type RadiusKm = (typeof RADIUS_OPTIONS)[number];
 function SectionHeader({
   icon,
   label,
-  badge,
-  badgeBg = T.primary,
+  onSeeAll,
 }: {
   icon: string;
   label: string;
-  badge?: string;
-  badgeBg?: string;
+  onSeeAll?: () => void;
 }) {
   return (
     <View style={s.sectionHeader}>
       <View style={s.sectionLeft}>
         <Ionicons
           name={icon as any}
-          size={14}
-          color={T.textSecondary}
+          size={16}
+          color={T.text}
           style={{ marginRight: 6 }}
         />
-        <Text style={s.sectionLabel}>{label}</Text>
+        <Text style={s.sectionTitle}>{label}</Text>
       </View>
-      {badge ? (
-        <View style={[s.sectionBadge, { backgroundColor: badgeBg }]}>
-          <Text style={s.sectionBadgeText}>{badge}</Text>
-        </View>
-      ) : null}
+      {onSeeAll && (
+        <TouchableOpacity onPress={onSeeAll}>
+          <Text style={s.seeAllText}>See all</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
-// ─── Emergency card ───────────────────────────────────────────────────────────
+// ─── Map Widget ───────────────────────────────────────────────────────────────
+// ─── Map Widget ───────────────────────────────────────────────────────────────
+function MapWidget({ lat, lng, area, users = [] }: { lat?: number; lng?: number; area: string, users?: any[] }) {
+  if (!lat || !lng) {
+    return (
+      <View style={[s.mapWidget, { alignItems: "center", justifyContent: "center" }]}>
+        <Text style={{ color: T.textSecondary }}>Location required for map.</Text>
+      </View>
+    );
+  }
+
+  const currentUserUid = AuthService.getCurrentUser()?.uid;
+
+  return (
+    <View style={s.mapWidget}>
+      <MapView
+        style={{ width: "100%", height: "100%" }}
+        initialRegion={{
+          latitude: lat,
+          longitude: lng,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+      >
+        {/* Render other users in the community */}
+        {users.map((u) => {
+          if (!u.latitude || !u.longitude || u.uid === currentUserUid) return null;
+          return (
+            <Marker
+              key={u.uid}
+              coordinate={{ latitude: u.latitude, longitude: u.longitude }}
+              title={u.name}
+              description={u.bio || "Neighbor"}
+            >
+              <View style={s.userMarker}>
+                <Ionicons name="person" size={14} color="#FFF" />
+              </View>
+            </Marker>
+          );
+        })}
+      </MapView>
+
+      <TouchableOpacity 
+        style={s.mapOverlayBtn} 
+        activeOpacity={0.9}
+        onPress={() => openMaps(lat, lng, area)}
+      >
+        <Ionicons name="navigate-circle" size={40} color={T.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Horizontal Cards ─────────────────────────────────────────────────────────
+
 function EmergencyCard({ item }: { item: any }) {
   const router = useRouter();
-  const hasCoords = item.latitude && item.longitude;
   return (
     <TouchableOpacity
-      style={s.emergencyCard}
+      style={[s.horizCard, { backgroundColor: T.card, borderColor: T.border }]}
       activeOpacity={0.9}
-      onPress={() => router.push(`/post/${item.id}` as any)}
+      onPress={() => router.push(`/sos/${item.originalId || item.id}` as any)}
     >
-      <View style={s.emTopRow}>
-        <View style={s.emBadge}>
-          <Ionicons
-            name="time"
-            size={11}
-            color="#FFFFFF"
-            style={{ marginRight: 3 }}
-          />
-          <Text style={s.emBadgeText}>SOS nearby</Text>
+      <View style={s.hcHeader}>
+        <View style={[s.hcIconBox, { backgroundColor: "#FEF2F2" }]}>
+          <Text style={{ fontSize: 10, fontWeight: "800", color: T.primary }}>SOS</Text>
         </View>
-        <Text style={s.emMeta}>
-          {item.timePosted}
-          {item.distance ? (
-            <Text style={{ color: "#FCA5A5" }}> · {item.distance}</Text>
-          ) : null}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.hcTitle} numberOfLines={1}>{item.title}</Text>
+          <View style={s.hcMetaRow}>
+            <Ionicons name="location-outline" size={10} color={T.textSecondary} />
+            <Text style={s.hcMetaText} numberOfLines={1}>{item.area || "Nearby"}</Text>
+          </View>
+        </View>
       </View>
-
-      <Text style={s.emTitle} numberOfLines={2}>
-        {item.title}
-      </Text>
-
-      <View style={s.emFooter}>
-        <View style={s.emResponders}>
-          <Ionicons
-            name="people-outline"
-            size={13}
-            color="#9CA3AF"
-            style={{ marginRight: 5 }}
-          />
-          <Text style={s.emRespondersText}>
-            {item.commentsCount || 0} responding
-          </Text>
-        </View>
-        <View style={s.emActions}>
-          {hasCoords && (
-            <TouchableOpacity
-              style={s.emMapsBtn}
-              onPress={() =>
-                openMaps(item.latitude, item.longitude, item.title)
-              }
-              activeOpacity={0.8}
-            >
-              <Ionicons name="navigate-outline" size={13} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={s.emHelpBtn}
-            onPress={() => router.push(`/post/${item.id}` as any)}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="hand-left"
-              size={12}
-              color="#FFFFFF"
-              style={{ marginRight: 4 }}
-            />
-            <Text style={s.emHelpText}>I Can Help</Text>
-          </TouchableOpacity>
+      <View style={s.hcFooter}>
+        <Text style={s.hcTimeText}>{item.distance || "0.5 km"} • {item.timePosted}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="people" size={12} color={T.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={s.hcTimeText}>{item.commentsCount || 0}</Text>
+          </View>
+          <View style={[s.hcBtn, { borderColor: T.border }]}>
+            <Text style={[s.hcBtnText, { color: T.primary }]}>Respond</Text>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
   );
 }
 
-// ─── Generic post row ─────────────────────────────────────────────────────────
-function PostRow({ item, isLast }: { item: any; isLast: boolean }) {
+function HelpCard({ item }: { item: any }) {
   const router = useRouter();
-  const hasCoords = item.latitude && item.longitude;
-  const color = catColor(item.category);
   return (
-    <View>
-      <TouchableOpacity
-        style={s.postRow}
-        activeOpacity={0.75}
-        onPress={() => router.push(`/post/${item.id}` as any)}
-      >
-        <View style={[s.postDot, { backgroundColor: color }]} />
-        <View style={s.postContent}>
-          <Text style={s.postTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <View style={s.postMeta}>
-            <Ionicons
-              name="location-outline"
-              size={10}
-              color={T.textSecondary}
-              style={{ marginRight: 2 }}
-            />
-            <Text style={s.postMetaText}>{item.distance || "Nearby"}</Text>
-            <View style={s.metaDot} />
-            <Ionicons
-              name="time-outline"
-              size={10}
-              color={T.textSecondary}
-              style={{ marginRight: 2 }}
-            />
-            <Text style={s.postMetaText}>{item.timePosted}</Text>
-            {item.commentsCount > 0 && (
-              <>
-                <View style={s.metaDot} />
-                <Ionicons
-                  name="chatbubble-outline"
-                  size={10}
-                  color={T.textSecondary}
-                  style={{ marginRight: 2 }}
-                />
-                <Text style={s.postMetaText}>{item.commentsCount}</Text>
-              </>
-            )}
+    <TouchableOpacity
+      style={[s.horizCard, { backgroundColor: T.card, borderColor: T.border }]}
+      activeOpacity={0.9}
+      onPress={() => router.push(`/post/${item.id}` as any)}
+    >
+      <View style={s.hcHeader}>
+        <View style={[s.hcIconBox, { backgroundColor: "#EFF6FF" }]}>
+          <Ionicons name="hand-left" size={16} color={T.blue} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.hcTitle} numberOfLines={1}>{item.title}</Text>
+          <View style={s.hcMetaRow}>
+            <Ionicons name="location-outline" size={10} color={T.textSecondary} />
+            <Text style={s.hcMetaText} numberOfLines={1}>{item.area || "Nearby"}</Text>
           </View>
         </View>
-        <View style={s.postActions}>
-          {hasCoords && (
-            <TouchableOpacity
-              hitSlop={10}
-              onPress={() =>
-                openMaps(item.latitude, item.longitude, item.title)
-              }
-            >
-              <Ionicons
-                name="navigate-outline"
-                size={15}
-                color={T.textSecondary}
-              />
-            </TouchableOpacity>
-          )}
-          <Ionicons
-            name="chevron-forward"
-            size={15}
-            color="#D1D5DB"
-            style={{ marginLeft: 8 }}
-          />
+      </View>
+      <View style={s.hcFooter}>
+        <Text style={s.hcTimeText}>{item.distance || "1.2 km"} • {item.timePosted}</Text>
+        <View style={[s.hcBtn, { borderColor: T.blue }]}>
+          <Text style={[s.hcBtnText, { color: T.blue }]}>Open</Text>
         </View>
-      </TouchableOpacity>
-      {!isLast && <View style={s.rowDivider} />}
-    </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function LostFoundCard({ item }: { item: any }) {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      style={[s.horizCard, { backgroundColor: T.card, borderColor: T.border }]}
+      activeOpacity={0.9}
+      onPress={() => router.push(`/post/${item.id}` as any)}
+    >
+      <View style={s.hcHeader}>
+        <View style={[s.hcIconBox, { backgroundColor: "#ECFDF5" }]}>
+          <Ionicons name="search" size={16} color={T.green} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.hcTitle} numberOfLines={1}>{item.title}</Text>
+          <View style={s.hcMetaRow}>
+            <Ionicons name="location-outline" size={10} color={T.textSecondary} />
+            <Text style={s.hcMetaText} numberOfLines={1}>{item.area || "Nearby"}</Text>
+          </View>
+        </View>
+      </View>
+      <View style={s.hcFooter}>
+        <Text style={s.hcTimeText}>{item.distance || "0.8 km"} • {item.timePosted}</Text>
+        <View style={[s.hcBtn, { backgroundColor: T.green, borderWidth: 0 }]}>
+          <Text style={[s.hcBtnText, { color: "#FFFFFF" }]}>View</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Timeline Row ─────────────────────────────────────────────────────────────
+function TimelineRow({ item, isLast }: { item: any; isLast: boolean }) {
+  const router = useRouter();
+  
+  let color = T.textSecondary;
+  let icon = "ellipse";
+  const cat = item.category?.toLowerCase() || "";
+  if (cat === "emergency" || item.isSos) {
+    color = T.primary;
+    icon = "alert-circle";
+  } else if (cat === "help" || cat === "general" || cat === "food") {
+    color = T.orange;
+    icon = "hand-left";
+  } else if (cat.includes("lost")) {
+    color = T.green;
+    icon = "search";
+  } else if (cat === "services") {
+    color = T.blue;
+    icon = "construct";
+  } else if (cat === "recommendations") {
+    color = T.purple;
+    icon = "star";
+  }
+
+  return (
+    <TouchableOpacity 
+      style={s.timelineRow}
+      onPress={() => {
+        if (item.isSos) {
+          router.push(`/sos/${item.originalId || item.id}` as any);
+        } else {
+          router.push(`/post/${item.id}` as any);
+        }
+      }}
+      activeOpacity={0.7}
+    >
+      <View style={s.tlLineCol}>
+        <View style={[s.tlDot, { backgroundColor: color + "20" }]}>
+          <Ionicons name={icon as any} size={12} color={color} />
+        </View>
+        {!isLast && <View style={[s.tlLine, { backgroundColor: "#F3F4F6" }]} />}
+      </View>
+      <View style={s.tlContent}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.tlTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={s.tlSub} numberOfLines={1}>{item.area || "Your Area"}</Text>
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={s.tlDist}>{item.distance || "Nearby"}</Text>
+          <Text style={[s.tlTime, { color: color }]}>{item.timePosted}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -276,86 +327,7 @@ function EmptyState({
   );
 }
 
-// ─── Location widget (replaces fake map) ──────────────────────────────────────
-function LocationWidget({
-  areaName,
-  cityName,
-  lat,
-  lng,
-  sosCount,
-  totalNearby,
-}: {
-  areaName: string;
-  cityName: string;
-  lat?: number;
-  lng?: number;
-  sosCount: number;
-  totalNearby: number;
-}) {
-  return (
-    <View style={s.locWidget}>
-      {/* Accuracy pulse ring */}
-      <View style={s.locPulseOuter} />
-      <View style={s.locPulseInner} />
-      <View style={s.locPinCircle}>
-        <Ionicons name="location" size={20} color="#FFFFFF" />
-      </View>
-
-      {/* Badges */}
-      <View style={s.locBottomRow}>
-        <View style={s.locNameBadge}>
-          <Ionicons
-            name="location-outline"
-            size={11}
-            color={T.text}
-            style={{ marginRight: 4 }}
-          />
-          <Text style={s.locNameText} numberOfLines={1}>
-            {areaName}
-            {cityName ? `, ${cityName}` : ""}
-          </Text>
-        </View>
-        <View
-          style={[
-            s.locSosBadge,
-            { backgroundColor: sosCount > 0 ? T.primary : "#10B981" },
-          ]}
-        >
-          <Text style={s.locSosText}>
-            {sosCount > 0 ? `${sosCount} SOS` : "All clear"}
-          </Text>
-        </View>
-      </View>
-
-      {/* Coords row */}
-      {lat !== undefined && lng !== undefined && (
-        <View style={s.locCoordsRow}>
-          <Ionicons
-            name="navigate-circle-outline"
-            size={11}
-            color="rgba(255,255,255,0.5)"
-            style={{ marginRight: 4 }}
-          />
-          <Text style={s.locCoordsText}>
-            {lat.toFixed(4)}, {lng.toFixed(4)}
-          </Text>
-          <View style={s.locDot} />
-          <Text style={s.locCoordsText}>{totalNearby} nearby</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-type TabType =
-  | "All"
-  | "Emergencies"
-  | "Requests"
-  | "Services"
-  | "Lost & Found"
-  | "Recommendations";
-
 export default function NearbyScreen() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -366,13 +338,12 @@ export default function NearbyScreen() {
   const { unreadCount } = useNotifications();
 
   const [livePosts, setLivePosts] = useState<any[]>([]);
+  const [activeSosAlerts, setActiveSosAlerts] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [communityUsers, setCommunityUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [feedError, setFeedError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>("All");
   const [radiusKm, setRadiusKm] = useState<RadiusKm>(5);
 
-  // ── Real-time user profile ─────────────────────────────────────────────────
   useEffect(() => {
     const me = AuthService.getCurrentUser();
     if (!me) return;
@@ -380,7 +351,6 @@ export default function NearbyScreen() {
     return unsub;
   }, []);
 
-  // ── Real-time post feed ────────────────────────────────────────────────────
   useEffect(() => {
     const cid = community?.communityId ?? userProfile?.communityId;
     if (!authInitialized) return;
@@ -390,10 +360,12 @@ export default function NearbyScreen() {
     }
 
     setIsLoading(true);
-    setFeedError(null);
 
-    // Synchronous unsub — no async IIFE, no leak
-    const unsub = PostService.subscribeToCommunityPosts(
+    UserService.getUsersByCommunity(cid).then(users => {
+      setCommunityUsers(users);
+    });
+
+    const unsubPosts = PostService.subscribeToCommunityPosts(
       cid,
       coordinates?.lat,
       coordinates?.lng,
@@ -411,12 +383,18 @@ export default function NearbyScreen() {
       },
       (err) => {
         console.error("Nearby feed error:", err);
-        setFeedError("Could not load nearby activity. Check your connection.");
         setIsLoading(false);
       },
     );
 
-    return unsub;
+    const unsubSos = SosService.subscribeToActiveSOS(cid, (alerts) => {
+      setActiveSosAlerts(alerts);
+    });
+
+    return () => {
+      unsubPosts();
+      unsubSos();
+    };
   }, [
     authInitialized,
     community?.communityId,
@@ -425,34 +403,60 @@ export default function NearbyScreen() {
     coordinates?.lng,
   ]);
 
-  // ── Radius-filtered posts ──────────────────────────────────────────────────
-  const withinRadius = livePosts.filter((p) => {
-    if (p.distanceKm == null) return true; // no coords on post → include
+  const sosItems = activeSosAlerts.map((alert) => {
+    let distKm: number | null = null;
+    let distLabel = "Nearby";
+    if (coordinates && alert.location?.lat && alert.location?.lng) {
+      distKm = haversineDistance(
+        coordinates.lat,
+        coordinates.lng,
+        alert.location.lat,
+        alert.location.lng,
+      );
+      distLabel = formatDistance(distKm);
+    }
+    return {
+      ...alert,
+      id: `sos_${alert.id}`,
+      originalId: alert.id,
+      title: `🚨 ${alert.type}`,
+      category: "Emergency",
+      area: alert.location?.area,
+      timePosted: getTimeAgo(alert.createdAt),
+      distanceKm: distKm,
+      distance: distLabel,
+      commentsCount: alert.respondersCount || 0,
+      isSos: true,
+    };
+  });
+
+  const allItems = [...sosItems, ...livePosts];
+
+  const withinRadius = allItems.filter((p) => {
+    if (p.distanceKm == null) return true;
     return p.distanceKm <= radiusKm;
   });
 
-  // ── Category splits ────────────────────────────────────────────────────────
   const emergencies = withinRadius.filter(
-    (p) => p.category?.toLowerCase() === "emergency",
+    (p) => p.category?.toLowerCase() === "emergency" || p.isSos
   );
   const requests = withinRadius.filter((p) =>
     ["help", "general", "food"].includes(p.category?.toLowerCase()),
-  );
-  const services = withinRadius.filter(
-    (p) => p.category?.toLowerCase() === "services",
   );
   const lostFound = withinRadius.filter((p) => {
     const c = p.category?.toLowerCase();
     return c === "lost & found" || c === "lost_found" || c === "lost";
   });
-  const recommendations = withinRadius.filter(
-    (p) => p.category?.toLowerCase() === "recommendations",
-  );
-  const trending = [...withinRadius]
-    .sort((a, b) => (b.commentsCount || 0) - (a.commentsCount || 0))
-    .slice(0, 6);
+  
+  // Combine all for Activity timeline
+  const activityTimeline = [...withinRadius]
+    .sort((a, b) => {
+      const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+      const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+      return bTime - aTime;
+    })
+    .slice(0, 10);
 
-  // ── Display values ─────────────────────────────────────────────────────────
   const areaName =
     community?.district ||
     community?.area ||
@@ -461,9 +465,6 @@ export default function NearbyScreen() {
     userProfile?.communityName ||
     "";
 
-  const cityName = community?.city || userProfile?.city || "";
-
-  // ── GPS-off guard ──────────────────────────────────────────────────────────
   if (isGpsDisabled || (!isLoading && !coordinates && authInitialized)) {
     return (
       <View style={s.root}>
@@ -487,249 +488,6 @@ export default function NearbyScreen() {
     );
   }
 
-  const TABS: TabType[] = [
-    "All",
-    "Emergencies",
-    "Requests",
-    "Services",
-    "Lost & Found",
-    "Recommendations",
-  ];
-
-  // ── Render sections ────────────────────────────────────────────────────────
-  const renderSections = () => {
-    if (activeTab === "All") {
-      return (
-        <>
-          <View style={s.section}>
-            <SectionHeader icon="navigate-outline" label="YOUR LOCATION" />
-            <LocationWidget
-              areaName={areaName || "Locating…"}
-              cityName={cityName}
-              lat={coordinates?.lat}
-              lng={coordinates?.lng}
-              sosCount={emergencies.length}
-              totalNearby={withinRadius.length}
-            />
-          </View>
-
-          {emergencies.length > 0 && (
-            <View style={s.section}>
-              <SectionHeader
-                icon="alert-circle-outline"
-                label="NEARBY SOS"
-                badge={`${emergencies.length} active`}
-              />
-              {emergencies.map((item) => (
-                <EmergencyCard key={item.id} item={item} />
-              ))}
-            </View>
-          )}
-
-          {requests.length > 0 && (
-            <View style={s.section}>
-              <SectionHeader icon="hand-left-outline" label="HELP REQUESTS" />
-              <View style={s.listCard}>
-                {requests.map((item, i) => (
-                  <PostRow
-                    key={item.id}
-                    item={item}
-                    isLast={i === requests.length - 1}
-                  />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {lostFound.length > 0 && (
-            <View style={s.section}>
-              <SectionHeader
-                icon="search-outline"
-                label="LOST & FOUND"
-                badgeBg="#FEF3C7"
-              />
-              <View style={s.listCard}>
-                {lostFound.map((item, i) => (
-                  <PostRow
-                    key={item.id}
-                    item={item}
-                    isLast={i === lostFound.length - 1}
-                  />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {recommendations.length > 0 && (
-            <View style={s.section}>
-              <SectionHeader
-                icon="star-outline"
-                label="RECOMMENDATIONS"
-                badgeBg="#EEF2FF"
-              />
-              <View style={s.listCard}>
-                {recommendations.map((item, i) => (
-                  <PostRow
-                    key={item.id}
-                    item={item}
-                    isLast={i === recommendations.length - 1}
-                  />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {services.length > 0 && (
-            <View style={s.section}>
-              <SectionHeader
-                icon="construct-outline"
-                label="COMMUNITY SERVICES"
-              />
-              <View style={s.listCard}>
-                {services.map((item, i) => (
-                  <PostRow
-                    key={item.id}
-                    item={item}
-                    isLast={i === services.length - 1}
-                  />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {withinRadius.length === 0 && (
-            <EmptyState
-              icon="people-outline"
-              title="Nothing nearby yet"
-              sub={`No activity within ${radiusKm} km. Be the first to post!`}
-            />
-          )}
-        </>
-      );
-    }
-
-    if (activeTab === "Emergencies") {
-      return emergencies.length > 0 ? (
-        <View style={s.section}>
-          <SectionHeader
-            icon="alert-circle-outline"
-            label="NEARBY SOS"
-            badge={`${emergencies.length} active`}
-          />
-          {emergencies.map((item) => (
-            <EmergencyCard key={item.id} item={item} />
-          ))}
-        </View>
-      ) : (
-        <EmptyState
-          icon="shield-checkmark-outline"
-          title="No active SOS alerts"
-          sub={`None within ${radiusKm} km`}
-        />
-      );
-    }
-
-    if (activeTab === "Requests") {
-      return requests.length > 0 ? (
-        <View style={s.section}>
-          <SectionHeader icon="hand-left-outline" label="HELP REQUESTS" />
-          <View style={s.listCard}>
-            {requests.map((item, i) => (
-              <PostRow
-                key={item.id}
-                item={item}
-                isLast={i === requests.length - 1}
-              />
-            ))}
-          </View>
-        </View>
-      ) : (
-        <EmptyState
-          icon="chatbubble-ellipses-outline"
-          title="No help requests nearby"
-          sub={`None within ${radiusKm} km`}
-        />
-      );
-    }
-
-    if (activeTab === "Services") {
-      return services.length > 0 ? (
-        <View style={s.section}>
-          <SectionHeader icon="construct-outline" label="COMMUNITY SERVICES" />
-          <View style={s.listCard}>
-            {services.map((item, i) => (
-              <PostRow
-                key={item.id}
-                item={item}
-                isLast={i === services.length - 1}
-              />
-            ))}
-          </View>
-        </View>
-      ) : (
-        <EmptyState
-          icon="hammer-outline"
-          title="No services nearby"
-          sub={`None within ${radiusKm} km`}
-        />
-      );
-    }
-
-    if (activeTab === "Lost & Found") {
-      return lostFound.length > 0 ? (
-        <View style={s.section}>
-          <SectionHeader
-            icon="search-outline"
-            label="LOST & FOUND"
-            badgeBg="#FEF3C7"
-          />
-          <View style={s.listCard}>
-            {lostFound.map((item, i) => (
-              <PostRow
-                key={item.id}
-                item={item}
-                isLast={i === lostFound.length - 1}
-              />
-            ))}
-          </View>
-        </View>
-      ) : (
-        <EmptyState
-          icon="help-circle-outline"
-          title="No lost & found posts"
-          sub={`None within ${radiusKm} km`}
-        />
-      );
-    }
-
-    if (activeTab === "Recommendations") {
-      return recommendations.length > 0 ? (
-        <View style={s.section}>
-          <SectionHeader
-            icon="star-outline"
-            label="RECOMMENDATIONS"
-            badgeBg="#EEF2FF"
-          />
-          <View style={s.listCard}>
-            {recommendations.map((item, i) => (
-              <PostRow
-                key={item.id}
-                item={item}
-                isLast={i === recommendations.length - 1}
-              />
-            ))}
-          </View>
-        </View>
-      ) : (
-        <EmptyState
-          icon="star-outline"
-          title="No recommendations nearby"
-          sub={`None within ${radiusKm} km`}
-        />
-      );
-    }
-  };
-
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={T.bg} />
@@ -738,14 +496,14 @@ export default function NearbyScreen() {
         <View style={s.header}>
           <View style={s.headerLeft}>
             <View style={s.pinCircle}>
-              <Ionicons name="location" size={17} color="#FFFFFF" />
+              <Ionicons name="location" size={17} color={T.primary} />
             </View>
             <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={s.headerTitle} numberOfLines={1}>
                 {areaName || "Nearby"}
               </Text>
               <Text style={s.headerSub}>
-                Discover what's happening around you
+                See what's happening nearby
               </Text>
             </View>
           </View>
@@ -768,12 +526,6 @@ export default function NearbyScreen() {
 
         {/* ── Radius chips ── */}
         <View style={s.radiusRow}>
-          <Ionicons
-            name="radio-outline"
-            size={13}
-            color={T.textSecondary}
-            style={{ marginRight: 8 }}
-          />
           {RADIUS_OPTIONS.map((r) => (
             <TouchableOpacity
               key={r}
@@ -791,6 +543,14 @@ export default function NearbyScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity 
+            style={s.myLocBtn}
+            onPress={() => Alert.alert("Location", `Currently showing activity near ${areaName || "your location"}.`)}
+          >
+            <Ionicons name="locate" size={12} color={T.blue} style={{ marginRight: 4 }}/>
+            <Text style={[s.myLocText, { color: T.blue }]}>My Location</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Content ── */}
@@ -809,8 +569,105 @@ export default function NearbyScreen() {
             />
           }
         >
-          {renderSections()}
+          <MapWidget 
+            lat={coordinates?.lat || userProfile?.latitude} 
+            lng={coordinates?.lng || userProfile?.longitude} 
+            area={areaName}
+            users={communityUsers}
+          />
+
+          {emergencies.length > 0 && (
+            <View style={s.section}>
+              <SectionHeader
+                icon="alert"
+                label="Nearby emergencies"
+                onSeeAll={() => router.push("/" as any)}
+              />
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                contentContainerStyle={{ paddingHorizontal: PX, paddingBottom: 12, gap: 12 }}
+              >
+                {emergencies.map((item) => (
+                  <EmergencyCard key={item.id} item={item} />
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {requests.length > 0 && (
+            <View style={s.section}>
+              <SectionHeader
+                icon="hand-left"
+                label="Nearby help requests"
+                onSeeAll={() => router.push("/search" as any)}
+              />
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                contentContainerStyle={{ paddingHorizontal: PX, paddingBottom: 12, gap: 12 }}
+              >
+                {requests.map((item) => (
+                  <HelpCard key={item.id} item={item} />
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {lostFound.length > 0 && (
+            <View style={s.section}>
+              <SectionHeader
+                icon="cube"
+                label="Lost & found nearby"
+                onSeeAll={() => router.push("/search" as any)}
+              />
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                contentContainerStyle={{ paddingHorizontal: PX, paddingBottom: 12, gap: 12 }}
+              >
+                {lostFound.map((item) => (
+                  <LostFoundCard key={item.id} item={item} />
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {activityTimeline.length > 0 && (
+            <View style={s.section}>
+              <SectionHeader
+                icon="pulse"
+                label="Activity around you"
+                onSeeAll={() => router.push("/search" as any)}
+              />
+              <View style={s.timelineContainer}>
+                {activityTimeline.map((item, index) => (
+                  <TimelineRow 
+                    key={item.id} 
+                    item={item} 
+                    isLast={index === activityTimeline.length - 1} 
+                  />
+                ))}
+              </View>
+            </View>
+          )}
+
+          {withinRadius.length === 0 && (
+            <EmptyState
+              icon="people-outline"
+              title="Nothing nearby yet"
+              sub={`No activity within ${radiusKm} km. Be the first to post!`}
+            />
+          )}
         </ScrollView>
+        
+        {/* Floating Action Button */}
+        <TouchableOpacity 
+          style={s.fab}
+          onPress={() => router.push("/search" as any)}
+        >
+          <Ionicons name="search" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
       </SafeAreaView>
     </View>
   );
@@ -819,7 +676,7 @@ export default function NearbyScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.bg },
-  scroll: { paddingHorizontal: 16, paddingBottom: 110 },
+  scroll: { paddingBottom: 110 },
   section: { marginBottom: 20 },
   center: {
     alignItems: "center",
@@ -835,7 +692,7 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 8,
+    paddingBottom: 12,
   },
   headerLeft: {
     flexDirection: "row",
@@ -844,26 +701,26 @@ const s = StyleSheet.create({
     marginRight: 8,
   },
   pinCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: T.primary,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FEF2F2",
     alignItems: "center",
     justifyContent: "center",
   },
   headerTitle: {
     color: T.text,
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
     letterSpacing: -0.3,
   },
-  headerSub: { color: T.textSecondary, fontSize: 11, marginTop: 1 },
+  headerSub: { color: T.textSecondary, fontSize: 13, marginTop: 2 },
   headerRight: { flexDirection: "row", gap: 8 },
   circleBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: T.card,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: T.bg,
     borderWidth: 1,
     borderColor: T.border,
     alignItems: "center",
@@ -872,14 +729,14 @@ const s = StyleSheet.create({
   },
   unreadDot: {
     position: "absolute",
-    top: 9,
+    top: 10,
     right: 10,
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
     backgroundColor: T.primary,
     borderWidth: 1,
-    borderColor: T.card,
+    borderColor: T.bg,
   },
 
   // Section header
@@ -887,218 +744,221 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: PX,
     marginBottom: 12,
   },
   sectionLeft: { flexDirection: "row", alignItems: "center" },
-  sectionLabel: {
-    color: T.textSecondary,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.8,
+  sectionTitle: {
+    color: T.text,
+    fontSize: 16,
+    fontWeight: "800",
   },
-  sectionBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100 },
-  sectionBadgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "800" },
+  seeAllText: { color: T.text, fontSize: 13, fontWeight: "700" },
 
   // Radius chips
   radiusRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 8,
-    gap: 6,
+    paddingBottom: 16,
+    gap: 8,
   },
   radiusChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 100,
     borderWidth: 1,
     borderColor: T.border,
     backgroundColor: T.card,
   },
   radiusChipActive: { backgroundColor: T.text, borderColor: T.text },
-  radiusChipText: { fontSize: 11, fontWeight: "700", color: T.textSecondary },
-
-  // Location widget
-  locWidget: {
-    backgroundColor: "#1C1E21",
-    borderRadius: 20,
-    height: 130,
+  radiusChipText: { fontSize: 12, fontWeight: "600", color: T.textSecondary },
+  myLocBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: T.card,
+  },
+  myLocText: { color: T.text, fontSize: 12, fontWeight: "700" },
+
+  // Map Widget
+  mapWidget: {
+    height: 180,
+    marginHorizontal: PX,
+    borderRadius: 20,
+    backgroundColor: T.border,
     overflow: "hidden",
     position: "relative",
   },
-  locPulseOuter: {
-    position: "absolute",
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.2)",
-    backgroundColor: "rgba(239,68,68,0.05)",
-  },
-  locPulseInner: {
-    position: "absolute",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.35)",
-    backgroundColor: "rgba(239,68,68,0.1)",
-  },
-  locPinCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  userMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: T.primary,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: T.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  locBottomRow: {
-    position: "absolute",
-    bottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    width: "100%",
-  },
-  locNameBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.9)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 100,
-    maxWidth: "65%",
-  },
-  locNameText: { color: T.text, fontSize: 11, fontWeight: "700" },
-  locSosBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100 },
-  locSosText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800" },
-  locCoordsRow: {
-    position: "absolute",
-    top: 10,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  locCoordsText: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 9,
-    fontWeight: "600",
-  },
-  locDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    marginHorizontal: 6,
-  },
-
-  // Emergency card
-  emergencyCard: {
-    backgroundColor: "#111827",
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 10,
-    shadowColor: T.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+    borderWidth: 2,
+    borderColor: "#FFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
     elevation: 4,
   },
-  emTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
+  mapOverlayBtn: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  emBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: T.primary,
+  mapBgInner: {
+    height: 160,
+    backgroundColor: "#F9FAFB", // map placeholder color
+    position: "relative",
+    overflow: "hidden",
+  },
+  mapPin: {
+    position: "absolute",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    backgroundColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  userLocPulseOuter: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 100,
+    height: 100,
+    marginLeft: -50,
+    marginTop: -50,
+    borderRadius: 50,
+    backgroundColor: "rgba(17, 24, 39, 0.05)",
+  },
+  userLocPulseInner: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 60,
+    height: 60,
+    marginLeft: -30,
+    marginTop: -30,
+    borderRadius: 30,
+    backgroundColor: "rgba(17, 24, 39, 0.1)",
+  },
+  userLocDot: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 16,
+    height: 16,
+    marginLeft: -8,
+    marginTop: -8,
+    borderRadius: 8,
+    backgroundColor: T.text,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  userLocTooltip: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    marginLeft: -35,
+    marginTop: -35,
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 100,
+    paddingVertical: 4,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  emBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  emMeta: { color: "rgba(255,255,255,0.4)", fontSize: 11 },
-  emTitle: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800",
-    lineHeight: 20,
-    marginBottom: 14,
-  },
-  emFooter: {
+  userLocTooltipText: { color: T.text, fontSize: 10, fontWeight: "700" },
+  mapLegend: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#FFFFFF",
   },
-  emResponders: { flexDirection: "row", alignItems: "center" },
-  emRespondersText: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  emActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  emMapsBtn: {
-    width: 32,
-    height: 32,
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { color: T.textSecondary, fontSize: 10, fontWeight: "600" },
+
+  // Horizontal Cards
+  horizCard: {
+    width: width * 0.7,
+    backgroundColor: T.card,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  hcHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  hcIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-  },
-  emHelpBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: T.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 100,
-  },
-  emHelpText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
-
-  // Post row
-  listCard: {
-    backgroundColor: T.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: T.border,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-  },
-  postRow: { flexDirection: "row", alignItems: "center", paddingVertical: 13 },
-  postDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
     marginRight: 12,
-    flexShrink: 0,
   },
-  postContent: { flex: 1, marginRight: 10 },
-  postTitle: { color: T.text, fontSize: 13, fontWeight: "700", lineHeight: 18 },
-  postMeta: { flexDirection: "row", alignItems: "center", marginTop: 3 },
-  postMetaText: { color: T.textSecondary, fontSize: 10 },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "#D1D5DB",
-    marginHorizontal: 5,
+  hcTitle: { color: T.text, fontSize: 14, fontWeight: "700", marginBottom: 4 },
+  hcMetaRow: { flexDirection: "row", alignItems: "center" },
+  hcMetaText: { color: T.textSecondary, fontSize: 11, marginLeft: 4 },
+  hcFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  hcTimeText: { color: T.textSecondary, fontSize: 11, fontWeight: "500" },
+  hcRespondText: { color: T.textSecondary, fontSize: 11, fontWeight: "600" },
+  hcBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 100,
+    borderWidth: 1,
   },
-  postActions: { flexDirection: "row", alignItems: "center" },
-  rowDivider: { height: 1, backgroundColor: "#F3F4F6" },
+  hcBtnText: { fontSize: 11, fontWeight: "700" },
+
+  // Timeline
+  timelineContainer: { paddingHorizontal: PX },
+  timelineRow: { flexDirection: "row", minHeight: 60 },
+  tlLineCol: { width: 24, alignItems: "center" },
+  tlDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  tlLine: { width: 2, flex: 1, marginTop: -4, marginBottom: -4, zIndex: 1 },
+  tlContent: { flex: 1, flexDirection: "row", paddingLeft: 12, paddingBottom: 16 },
+  tlTitle: { color: T.text, fontSize: 14, fontWeight: "700", marginBottom: 2 },
+  tlSub: { color: T.textSecondary, fontSize: 12 },
+  tlDist: { color: T.textSecondary, fontSize: 11, fontWeight: "600", marginBottom: 2 },
+  tlTime: { fontSize: 11, fontWeight: "700" },
 
   // Empty state
   emptyWrap: {
@@ -1109,6 +969,7 @@ const s = StyleSheet.create({
     paddingVertical: 40,
     paddingHorizontal: 24,
     alignItems: "center",
+    marginHorizontal: PX,
   },
   emptyTitle: {
     color: T.textSecondary,
@@ -1144,5 +1005,22 @@ const s = StyleSheet.create({
     borderRadius: 100,
   },
   stateBtnText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
-  loadingText: { color: T.textSecondary, fontSize: 13, marginTop: 8 },
+
+  // FAB
+  fab: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: T.text,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: T.text,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
 });

@@ -17,13 +17,20 @@ import * as ExpoLocation from "expo-location";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
-import { AppState, AppStateStatus, Alert as RNAlert } from "react-native";
+import { AppState, AppStateStatus, Alert as RNAlert, LogBox } from "react-native";
 import "../global.css";
 
 // Firebase is initialized via the firebase service on app startup
 if (!app) {
   console.warn("Firebase failed to initialize");
 }
+
+// Ignore Firebase internal unmount permission errors
+LogBox.ignoreLogs([
+  "FirebaseError: Missing or insufficient permissions",
+  "@firebase/firestore",
+  "auth/requires-recent-login"
+]);
 
 // ─── Global Alert Override ──────────────────────────────────────────────────
 // This intercepts every native Alert.alert() call in the application
@@ -224,6 +231,12 @@ export default function RootLayout() {
 
     const unsubscribe = AuthService.onAuthStateChanged(async (user) => {
       if (user) {
+        if (!AuthService.isAccountAccessAllowed(user)) {
+          logout();
+          setAuthInitialized(true);
+          return;
+        }
+
         login();
 
         if (
@@ -238,7 +251,7 @@ export default function RootLayout() {
 
         // ── Restore location/community from Firestore on every app start ──
         try {
-          const profile = await UserService.getUser(user.uid);
+          const profile = await UserService.getOwnProfile(user.uid);
           if (profile?.latitude && profile?.longitude && profile?.communityId) {
             // Restore saved community into Zustand
             setLocation(

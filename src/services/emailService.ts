@@ -76,7 +76,7 @@ export class EmailService {
    */
   private static async shouldSendEmail(uid: string, type: EmailType): Promise<{ allowed: boolean, email?: string }> {
     try {
-      const user = await UserService.getUser(uid);
+      const user = await UserService.getOwnProfile(uid);
       if (!user || !user.email) return { allowed: false };
 
       const prefs = user.notificationPreferences;

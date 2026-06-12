@@ -3,6 +3,7 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  collectionGroup,
   doc,
   limit,
   orderBy,
@@ -16,11 +17,19 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type QueryDocumentSnapshot,
+  type DocumentData,
+  type Query,
+  type DocumentReference,
+  type UpdateData,
+  type WriteBatch,
 } from "firebase/firestore";
 import { deleteObject, ref } from "firebase/storage";
 import { CloudinaryService } from "./cloudinaryService";
-import { db, storage } from "./firebase";
+import { auth, db, storage } from "./firebase";
 import NotificationService from "./notificationService";
+import { SecurityService } from "./securityService";
+import type { UserRole } from "@/types/roles";
 
 // ─── Emergency Contact ────────────────────────────────────────────────────────
 export interface EmergencyContact {
@@ -48,7 +57,7 @@ export interface UserProfile {
   email: string;
   photoURL: string;
   karma: number;
-  level: string;
+
   latitude?: number;
   longitude?: number;
   neighborhood?: string; // e.g. "Block 13" (street-level)
@@ -89,16 +98,125 @@ export interface UserProfile {
   // Location
   locationEnabled?: boolean;
   lastLocationUpdate?: any;
+  isOnline?: boolean;
+  lastSeen?: any;
+  // Monetization
+  isPremium?: boolean;
+  // Authorization
+  role?: UserRole;
+  emailVerified?: boolean;
 }
 
+/** Fields safe to expose when viewing another user's profile. */
+export type PublicUserProfile = Pick<
+  UserProfile,
+  | "uid"
+  | "name"
+  | "handle"
+  | "bio"
+  | "photoURL"
+  | "karma"
+
+  | "communityId"
+  | "communityName"
+  | "neighborhood"
+  | "area"
+  | "district"
+  | "city"
+  | "country"
+  | "privacySettings"
+  | "isOnline"
+  | "lastSeen"
+  | "isPremium"
+  | "createdAt"
+  | "lastActive"
+> & {
+  latitude?: number;
+  longitude?: number;
+};
+
+const PROTECTED_PROFILE_FIELDS = [
+  "role",
+  "karma",
+
+  "isPremium",
+  "isVerified",
+  "postsCount",
+  "commentsCount",
+  "sosAlertsCreated",
+  "sosResponsesGiven",
+  "helpRequestsResolved",
+  "emailVerified",
+  "createdAt",
+  "email",
+  "fcmToken",
+  "fcmTokens",
+] as const;
+
 export class UserService {
-  static async getUser(uid: string): Promise<UserProfile | null> {
+  static toPublicProfile(profile: UserProfile): PublicUserProfile {
+    const locationVisible = profile.privacySettings?.locationVisible !== false;
+    const publicProfile: PublicUserProfile = {
+      uid: profile.uid,
+      name: profile.name,
+      handle: profile.handle,
+      bio: profile.bio,
+      photoURL: profile.photoURL,
+      karma: profile.karma,
+
+      communityId: profile.communityId,
+      communityName: profile.communityName,
+      neighborhood: profile.neighborhood,
+      area: profile.area,
+      district: profile.district,
+      city: profile.city,
+      country: profile.country,
+      privacySettings: profile.privacySettings,
+      isOnline: profile.isOnline,
+      lastSeen: profile.lastSeen,
+      isPremium: profile.isPremium,
+      createdAt: profile.createdAt,
+      lastActive: profile.lastActive,
+    };
+    if (locationVisible) {
+      publicProfile.latitude = profile.latitude;
+      publicProfile.longitude = profile.longitude;
+    }
+    return publicProfile;
+  }
+
+  /** Full profile for the signed-in owner only. */
+  static async getOwnProfile(uid: string): Promise<UserProfile | null> {
+    try {
+      const docRef = doc(db, "users", uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data() as UserProfile;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching own profile:", error);
+      throw error;
+    }
+  }
+
+  /** Alias used by some screens for the current user's full profile. */
+  static async getUserProfile(uid: string): Promise<UserProfile | null> {
+    return this.getOwnProfile(uid);
+  }
+
+  static async getUser(uid: string): Promise<UserProfile | PublicUserProfile | null> {
     try {
       const docRef = doc(db, "users", uid);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        return docSnap.data() as UserProfile;
+        const profile = docSnap.data() as UserProfile;
+        const viewerUid = auth.currentUser?.uid;
+        if (viewerUid === uid) {
+          return profile;
+        }
+        return this.toPublicProfile(profile);
       }
       return null;
     } catch (error) {
@@ -114,14 +232,41 @@ export class UserService {
     }
   }
 
+  static async getUsersByCommunity(communityId: string): Promise<PublicUserProfile[]> {
+    try {
+      const q = query(
+        collection(db, "users"),
+        where("communityId", "==", communityId)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map((d) =>
+        this.toPublicProfile(d.data() as UserProfile),
+      );
+    } catch (error) {
+      console.error("Error fetching users by community:", error);
+      return [];
+    }
+  }
+
+  private static stripProtectedFields(
+    updates: Partial<UserProfile>,
+  ): Partial<UserProfile> {
+    const safe = { ...updates };
+    for (const field of PROTECTED_PROFILE_FIELDS) {
+      delete (safe as Record<string, unknown>)[field];
+    }
+    return safe;
+  }
+
   static async updateProfile(
     uid: string,
     updates: Partial<UserProfile>,
   ): Promise<void> {
     try {
+      const safeUpdates = this.stripProtectedFields(updates);
       const docRef = doc(db, "users", uid);
       await setDoc(docRef, {
-        ...updates,
+        ...safeUpdates,
         lastActive: serverTimestamp(),
       }, { merge: true });
 
@@ -233,7 +378,7 @@ export class UserService {
   ): Promise<string> {
     try {
       // 1. Get current user to find old avatar URL for cleanup (only if it was a Firebase Storage URL)
-      const currentUser = await this.getUser(uid);
+      const currentUser = await this.getOwnProfile(uid);
       const oldPhotoURL = currentUser?.photoURL;
 
       // 2. Upload image to Cloudinary
@@ -272,10 +417,11 @@ export class UserService {
     try {
       const docRef = doc(db, "users", uid);
       await setDoc(docRef, {
-        ...data,
+        ...this.stripProtectedFields(data),
         uid,
+        role: "user",
         karma: 0,
-        level: "Neighbor",
+
         postsCount: 0,
         commentsCount: 0,
         bio: "",
@@ -332,7 +478,7 @@ export class UserService {
   ): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      const current = await this.getUser(uid);
+      const current = await this.getOwnProfile(uid);
       const updatedPrefs = {
         pushEnabled: true,
         emailAlerts: true,
@@ -365,7 +511,7 @@ export class UserService {
   ): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
-      const current = await this.getUser(uid);
+      const current = await this.getOwnProfile(uid);
       const updatedSettings: PrivacySettings = {
         profileVisible: true,
         activityVisible: true,
@@ -415,7 +561,7 @@ export class UserService {
 
   static async getBlockedUsers(uid: string): Promise<string[]> {
     try {
-      const user = await this.getUser(uid);
+      const user = await this.getOwnProfile(uid);
       return user?.blockedUsers || [];
     } catch (error) {
       console.error("Error getting blocked users:", error);
@@ -456,9 +602,9 @@ export class UserService {
     contactId: string,
   ): Promise<void> {
     try {
-      const user = await this.getUser(uid);
+      const user = await this.getOwnProfile(uid);
       const contacts = user?.emergencyContacts || [];
-      const updated = contacts.filter((c) => c.id !== contactId);
+      const updated = contacts.filter((c: EmergencyContact) => c.id !== contactId);
       const docRef = doc(db, "users", uid);
       await setDoc(docRef, {
         emergencyContacts: updated,
@@ -476,9 +622,9 @@ export class UserService {
     updates: Partial<EmergencyContact>,
   ): Promise<void> {
     try {
-      const user = await this.getUser(uid);
+      const user = await this.getOwnProfile(uid);
       const contacts = user?.emergencyContacts || [];
-      const updated = contacts.map((c) =>
+      const updated = contacts.map((c: EmergencyContact) =>
         c.id === contactId ? { ...c, ...updates } : c,
       );
       const docRef = doc(db, "users", uid);
@@ -494,7 +640,7 @@ export class UserService {
 
   static async getEmergencyContacts(uid: string): Promise<EmergencyContact[]> {
     try {
-      const user = await this.getUser(uid);
+      const user = await this.getOwnProfile(uid);
       return user?.emergencyContacts || [];
     } catch (error) {
       console.error("Error getting emergency contacts:", error);
@@ -510,41 +656,9 @@ export class UserService {
     reason: string = "Your helpful contribution was appreciated",
   ): Promise<void> {
     try {
-      const docRef = doc(db, "users", uid);
-      await setDoc(docRef, {
-        karma: increment(amount),
-        lastActive: serverTimestamp(),
-      }, { merge: true });
+      await SecurityService.awardKarma(uid, amount, reason);
 
-      // ─── NEW: Add history record ──────────────────────────────────────────
-      const historyRef = collection(db, "users", uid, "karma_history");
-      let action = "Earned Karma";
-      let icon = "star-outline";
-      let color = "#F59E0B";
-      if (amount === 2) {
-        action = "Participated in Chat";
-        icon = "chatbubble-outline";
-        color = "#8B5CF6";
-      } else if (amount === 10) {
-        action = "Created Community Post";
-        icon = "document-text-outline";
-        color = "#059669";
-      } else if (amount === 50) {
-        action = "Answered SOS Alert";
-        icon = "heart-outline";
-        color = "#EF4444";
-      }
-
-      await addDoc(historyRef, {
-        action,
-        points: `+${amount}`,
-        color,
-        icon,
-        createdAt: serverTimestamp(),
-      });
-      // ─── END: History record ──────────────────────────────────────────────
-
-      // ─── NEW: Send karma notification ────────────────────────────────────
+      // ─── Send karma notification ────────────────────────────────────────
       if (amount > 0) {
         try {
           // Avoid circular dependency by getting singleton instance or using the class method
@@ -615,7 +729,7 @@ export class UserService {
         }
       },
       (error: any) => {
-        console.error("Error subscribing to user:", error);
+        console.warn("Subscription warning (user):", error?.message || error);
       },
     );
   }
@@ -639,43 +753,179 @@ export class UserService {
         callback(history);
       },
       (error: any) => {
-        console.error("Error subscribing to karma history:", error);
+        console.warn("Subscription warning (karma history):", error?.message || error);
       }
     );
   }
 
   static async cleanupUserData(uid: string): Promise<void> {
     try {
-      const batch = writeBatch(db);
-      let count = 0;
-      
-      const safelyDelete = (ref: any) => {
-        if (count < 490) {
-          batch.delete(ref);
-          count++;
+      const userRef = doc(db, "users", uid);
+      const userSnap = await getDoc(userRef);
+      const userProfile = userSnap.exists() ? userSnap.data() : null;
+
+      const batches: WriteBatch[] = [];
+      let currentBatch = writeBatch(db);
+      let opCount = 0;
+
+      const safelyDelete = (ref: DocumentReference<DocumentData>) => {
+        if (opCount >= 490) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          opCount = 0;
+        }
+        currentBatch.delete(ref);
+        opCount++;
+      };
+
+      const safelyUpdate = (ref: DocumentReference<DocumentData>, data: UpdateData<DocumentData>) => {
+        if (opCount >= 490) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          opCount = 0;
+        }
+        currentBatch.update(ref, data);
+        opCount++;
+      };
+
+      // Helper for querying and processing safely
+      const processQuery = async (
+        q: Query<DocumentData>,
+        isDelete = true,
+        updateData?: UpdateData<DocumentData>,
+        imageFields: string[] = [],
+      ) => {
+        try {
+          const snap = await getDocs(q);
+          for (const docSnap of snap.docs) {
+            const data = docSnap.data() as Record<string, unknown>;
+
+            // Delete Cloudinary images if specified
+            if (isDelete && imageFields.length > 0) {
+              for (const field of imageFields) {
+                const value = data[field];
+                if (value) {
+                  if (Array.isArray(value)) {
+                    for (const url of value) {
+                      if (typeof url === "string" && url.includes("cloudinary.com")) {
+                        await CloudinaryService.deleteImage(url);
+                      }
+                    }
+                  } else if (typeof value === "string" && value.includes("cloudinary.com")) {
+                    await CloudinaryService.deleteImage(value);
+                  }
+                }
+              }
+            }
+
+            if (isDelete) {
+              safelyDelete(docSnap.ref);
+            } else if (updateData) {
+              safelyUpdate(docSnap.ref, updateData);
+            }
+          }
+        } catch (e) {
+          console.warn(`Cleanup partial failure for query:`, e);
         }
       };
 
-      // 1. Delete all posts by user
+      // (userProfile already fetched at the start of cleanupUserData)
+
+      if (userProfile && userProfile.photoURL && userProfile.photoURL.includes('firebasestorage.googleapis.com')) {
+        try {
+          const { ref: storageRef, deleteObject } = require('firebase/storage');
+          const { storage } = require('./firebase');
+          const oldRef = storageRef(storage, userProfile.photoURL);
+          await deleteObject(oldRef);
+        } catch (e) {
+          console.warn("Could not delete legacy Firebase avatar:", e);
+        }
+      } else if (userProfile && userProfile.photoURL && userProfile.photoURL.includes('cloudinary.com')) {
+        await CloudinaryService.deleteImage(userProfile.photoURL);
+      }
+
+      // 1. Posts & Liked Posts
       const postsQ = query(collection(db, "posts"), where("userId", "==", uid));
-      const postsSnap = await getDocs(postsQ);
-      postsSnap.forEach((docSnap: any) => safelyDelete(docSnap.ref));
+      await processQuery(postsQ, true, undefined, ['mediaUrls', 'image', 'imageUrl']);
+      
+      const likedPostsQ = query(collection(db, "posts"), where("likedBy", "array-contains", uid));
+      await processQuery(likedPostsQ, false, { 
+        likedBy: arrayRemove(uid),
+        likes: increment(-1) 
+      });
 
-      // 2. Delete all notifications for user
+      // 2. Comments & Messages (Collection Group allowed by new rules)
+      const commentsQ = query(collectionGroup(db, "comments"), where("userId", "==", uid));
+      await processQuery(commentsQ);
+
+      const msgsQ = query(collectionGroup(db, "messages"), where("senderId", "==", uid));
+      await processQuery(msgsQ);
+
+      // 3. Businesses & Reviews
+      const bizQ = query(collection(db, "businesses"), where("userId", "==", uid));
+      await processQuery(bizQ, true, undefined, ['images', 'coverImage', 'logoUrl']);
+      const bizRevQ = query(collection(db, "business_reviews"), where("userId", "==", uid));
+      await processQuery(bizRevQ);
+
+      // 4. Services & Reviews
+      const srvQ = query(collection(db, "services"), where("userId", "==", uid));
+      await processQuery(srvQ, true, undefined, ['images', 'coverImage', 'logoUrl']);
+      const srvRevQ = query(collection(db, "service_reviews"), where("userId", "==", uid));
+      await processQuery(srvRevQ);
+
+      // 5. SOS Alerts
+      const sosQ = query(collection(db, "sos_alerts"), where("creatorId", "==", uid));
+      await processQuery(sosQ);
+
+      // 6. Reports
+      const reportsQ = query(collection(db, "reports"), where("reporterId", "==", uid));
+      await processQuery(reportsQ);
+
+      // 7. Notifications
       const notifQ = query(collection(db, "notifications"), where("userId", "==", uid));
-      const notifSnap = await getDocs(notifQ);
-      notifSnap.forEach((docSnap: any) => safelyDelete(docSnap.ref));
+      await processQuery(notifQ);
 
-      // 3. Delete karma history
+      // 8. Karma History
       const karmaQ = collection(db, "users", uid, "karma_history");
-      const karmaSnap = await getDocs(karmaQ);
-      karmaSnap.forEach((docSnap: any) => safelyDelete(docSnap.ref));
+      await processQuery(karmaQ);
 
-      // 4. Delete user document
+      // 9. Conversations (DMs vs Community)
+      try {
+        const convsQ = query(collection(db, "conversations"), where("participants", "array-contains", uid));
+        const convsSnap = await getDocs(convsQ);
+        convsSnap.forEach((docSnap: QueryDocumentSnapshot<DocumentData>) => {
+          const data = docSnap.data() as { type?: string };
+          if (data.type === "dm") {
+            safelyDelete(docSnap.ref);
+          } else if (data.type === "community") {
+            safelyUpdate(docSnap.ref, { participants: arrayRemove(uid) });
+          }
+        });
+      } catch(e) {
+        console.warn("Conversation cleanup failed", e);
+      }
+
+      // 10. Followers/Following Cleanup
+      const followingQ = query(collection(db, "users"), where("followers", "array-contains", uid));
+      await processQuery(followingQ, false, { followers: arrayRemove(uid) });
+
+      const followersQ = query(collection(db, "users"), where("following", "array-contains", uid));
+      await processQuery(followersQ, false, { following: arrayRemove(uid) });
+
+      // 11. Decrement Community Member Count
+      if (userProfile?.communityId) {
+        safelyUpdate(doc(db, "communities", userProfile.communityId), {
+          memberCount: increment(-1)
+        });
+      }
+
+      // 12. User Profile Document
       safelyDelete(doc(db, "users", uid));
 
-      if (count > 0) {
-        await batch.commit();
+      // Execute all batches
+      batches.push(currentBatch);
+      for (const b of batches) {
+        await b.commit();
       }
     } catch (error) {
       console.error("Error cleaning up user data:", error);

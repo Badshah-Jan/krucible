@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { TextInput, TextInputProps, View, StyleSheet } from 'react-native';
+import { TextInput, TextInputProps, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Text from './Text';
 
 interface InputProps extends TextInputProps {
@@ -13,9 +14,11 @@ export default function Input({
   style,
   onFocus,
   onBlur,
+  secureTextEntry,
   ...props
 }: InputProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const [isSecure, setIsSecure] = useState(secureTextEntry);
 
   return (
     <View style={styles.wrapper}>
@@ -33,6 +36,7 @@ export default function Input({
       >
         <TextInput
           placeholderTextColor="#6B7280"
+          secureTextEntry={isSecure}
           onFocus={(e) => {
             setIsFocused(true);
             if (onFocus) onFocus(e);
@@ -48,6 +52,15 @@ export default function Input({
           ]}
           {...props}
         />
+        {secureTextEntry && (
+          <TouchableOpacity 
+            style={styles.iconButton} 
+            onPress={() => setIsSecure(!isSecure)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={isSecure ? "eye-off" : "eye"} size={20} color="#A1A1AA" />
+          </TouchableOpacity>
+        )}
       </View>
       {error && (
         <Text variant="caption" color="red" style={styles.errorText}>
@@ -74,6 +87,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   multilineContainer: {
     height: undefined,
@@ -94,7 +109,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    height: '100%',
+  },
+  iconButton: {
+    paddingHorizontal: 16,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   errorText: {
     marginTop: 4,

@@ -1,4 +1,6 @@
 import { db } from "./firebase";
+import { SecurityService } from "./securityService";
+import { sanitizeText } from "@/utils/security";
 import {
   collection,
   doc,
@@ -22,6 +24,7 @@ export interface ServiceProvider {
   about: string;
   phone: string;
   isAvailable: boolean;
+  availabilityStatus?: 'available_now' | 'available_later' | 'offline';
   location: {
     lat: number;
     lng: number;
@@ -31,12 +34,12 @@ export interface ServiceProvider {
   rating: number;
   reviewCount: number;
   
-  // Future Monetization & Admin Fields
-  verified?: boolean;
-  verifiedAt?: any;
-  verifiedBy?: string;
-  featured?: boolean;
-  featuredUntil?: any;
+  // Freemium Monetization & Admin Fields
+  verificationStatus: "none" | "pending" | "approved" | "rejected";
+  isVerified: boolean;
+  isPremium: boolean;
+  subscriptionPlan: 'free' | 'premium';
+  featuredUntil: any | null;
   promotionLevel?: number;
   views?: number;
   contactClicks?: number;
@@ -69,14 +72,20 @@ export const CATEGORIES = [
 ];
 
 class ProviderService {
-  async registerProvider(provider: Omit<ServiceProvider, "id" | "rating" | "reviewCount" | "createdAt" | "updatedAt" | "verified" | "featured" | "views" | "contactClicks">) {
+  async registerProvider(provider: Omit<ServiceProvider, "id" | "rating" | "reviewCount" | "createdAt" | "updatedAt" | "isVerified" | "isPremium" | "subscriptionPlan" | "featuredUntil" | "views" | "contactClicks" | "promotionLevel" | "verificationStatus" | "availabilityStatus">) {
+    await SecurityService.enforceRateLimit("service_register");
     const colRef = collection(db, "services");
     const docRef = await addDoc(colRef, {
       ...provider,
+      name: sanitizeText(provider.name, 120),
+      about: sanitizeText(provider.about, 2000),
       rating: 0,
       reviewCount: 0,
-      verified: false,
-      featured: false,
+      verificationStatus: "none",
+      isVerified: false,
+      isPremium: false,
+      subscriptionPlan: 'free',
+      featuredUntil: null,
       promotionLevel: 0,
       views: 0,
       contactClicks: 0,
@@ -86,9 +95,11 @@ class ProviderService {
     return docRef.id;
   }
 
-  async updateProviderStatus(id: string, isAvailable: boolean) {
+  async updateProviderStatus(id: string, isAvailable: boolean, availabilityStatus?: 'available_now' | 'available_later' | 'offline') {
     const docRef = doc(db, "services", id);
-    await updateDoc(docRef, { isAvailable, updatedAt: serverTimestamp() });
+    const updates: any = { isAvailable, updatedAt: serverTimestamp() };
+    if (availabilityStatus) updates.availabilityStatus = availabilityStatus;
+    await updateDoc(docRef, updates);
   }
 
   async getProviderById(id: string): Promise<ServiceProvider | null> {
@@ -114,12 +125,16 @@ class ProviderService {
     const services = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as ServiceProvider));
     
     // Sort locally: 
-    // 1. Featured providers first
-    // 2. Then by availability
-    // 3. Then by rating
+    // 1. Premium/Featured providers first
+    // 2. Then Verified
+    // 3. Then by availability
+    // 4. Then by rating
     return services.sort((a: any, b: any) => {
-      if (a.featured !== b.featured) {
-        return a.featured ? -1 : 1;
+      if (a.isPremium !== b.isPremium) {
+        return a.isPremium ? -1 : 1;
+      }
+      if (a.isVerified !== b.isVerified) {
+        return a.isVerified ? -1 : 1;
       }
       if (a.isAvailable === b.isAvailable) {
         return b.rating - a.rating;

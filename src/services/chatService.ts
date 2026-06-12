@@ -1,6 +1,7 @@
 import {
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -18,6 +19,8 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import NotificationService from "./notificationService";
+import { SecurityService } from "./securityService";
+import { sanitizeText } from "@/utils/security";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +37,7 @@ export interface ChatMessage {
   text?: string;
   imageUrl?: string;
   audioUrl?: string;
-  type: "text" | "image" | "audio" | "sos_alert" | "system";
+  type: "text" | "image" | "audio" | "sos_alert" | "system" | "sticker";
   senderId: string;
   senderName: string;
   senderAvatar?: string;
@@ -46,9 +49,12 @@ export interface ChatMessage {
   metadata?: any;
 }
 
+export type ConversationContext = "personal" | "business" | "service";
+
 export interface Conversation {
   id?: string;
   type: ConversationType;
+  context?: ConversationContext;
   participants: string[];
   participantNames?: Record<string, string>;
   communityId?: string;
@@ -81,6 +87,7 @@ export class ChatService {
     uid2: string,
     name1: string,
     name2: string,
+    context: "personal" | "business" | "service" = "personal"
   ): Promise<string> {
     const roomId = ["dm", uid1, uid2].sort().join("_");
     const ref = doc(db, "conversations", roomId);
@@ -89,6 +96,7 @@ export class ChatService {
     if (!snap.exists()) {
       await setDoc(ref, {
         type: "dm",
+        context,
         participants: [uid1, uid2],
         participantNames: { [uid1]: name1, [uid2]: name2 },
         lastMessage: "",
@@ -98,6 +106,14 @@ export class ChatService {
         unreadCounts: { [uid1]: 0, [uid2]: 0 },
         createdAt: serverTimestamp(),
       } as Omit<Conversation, "id">);
+    } else {
+      const data = snap.data();
+      const currentNames = data?.participantNames || {};
+      if (currentNames[uid1] !== name1 || currentNames[uid2] !== name2) {
+        await setDoc(ref, {
+          participantNames: { ...currentNames, [uid1]: name1, [uid2]: name2 }
+        }, { merge: true });
+      }
     }
 
     return roomId;
@@ -207,6 +223,19 @@ export class ChatService {
   }
 
   // ── Messages ──────────────────────────────────────────────────────────────
+  
+  /**
+   * Delete an entire conversation
+   */
+  static async deleteConversation(chatId: string): Promise<void> {
+    try {
+      const ref = doc(db, "conversations", chatId);
+      await deleteDoc(ref);
+    } catch (e) {
+      console.error("deleteConversation error:", e);
+      throw e;
+    }
+  }
 
   /**
    * Send a message. Atomically writes the message doc and updates the
@@ -217,12 +246,20 @@ export class ChatService {
     message: Omit<ChatMessage, "id" | "createdAt" | "status">,
     participantIds: string[],
   ): Promise<string> {
+    await SecurityService.enforceRateLimit("message_send");
+
+    const sanitizedMessage = {
+      ...message,
+      text: message.text ? sanitizeText(message.text, 5000) : message.text,
+      senderName: sanitizeText(message.senderName, 100),
+    };
+
     const batch = writeBatch(db);
 
     // 1. Write message
     const msgRef = doc(collection(db, "conversations", chatId, "messages"));
     batch.set(msgRef, {
-      ...message,
+      ...sanitizedMessage,
       createdAt: serverTimestamp(),
       status: "sent",
     });
@@ -275,19 +312,19 @@ export class ChatService {
 
     batch.update(convRef, {
       lastMessage:
-        message.text || (message.imageUrl ? "📷 Photo" : "🎤 Voice note"),
+        sanitizedMessage.text || (message.imageUrl ? "📷 Photo" : "🎤 Voice note"),
       lastMessageAt: serverTimestamp(),
-      lastSenderId: message.senderId,
+      lastSenderId: sanitizedMessage.senderId,
       ...unreadIncrement,
     });
 
     await batch.commit();
 
     // 3. Send in-app notifications to recipients (fire-and-forget, non-blocking)
-    const messagePreview = message.text
-      ? message.text.length > 80
-        ? message.text.substring(0, 80) + "…"
-        : message.text
+    const messagePreview = sanitizedMessage.text
+      ? sanitizedMessage.text.length > 80
+        ? sanitizedMessage.text.substring(0, 80) + "…"
+        : sanitizedMessage.text
       : message.imageUrl
         ? "📷 Sent a photo"
         : "🎤 Sent a voice note";
@@ -295,10 +332,10 @@ export class ChatService {
     for (const uid of recipientIds) {
       NotificationService.sendInAppNotification(
         uid,
-        `💬 ${message.senderName}`,
+        `💬 ${sanitizedMessage.senderName}`,
         messagePreview,
         "direct_message",
-        { chatId, senderId: message.senderId, senderName: message.senderName },
+        { chatId, senderId: sanitizedMessage.senderId, senderName: sanitizedMessage.senderName },
       ).catch((e) =>
         console.warn("[ChatService] Notification failed (non-fatal):", e),
       );

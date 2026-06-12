@@ -1,4 +1,6 @@
 import { db } from "./firebase";
+import { SecurityService } from "./securityService";
+import { sanitizeText } from "@/utils/security";
 import {
   collection,
   doc,
@@ -26,10 +28,12 @@ export interface BusinessProfile {
   logo?: string;
   coverImage?: string;
   
-  // Monetization fields
-  verified: boolean;
-  featured: boolean;
-  featuredUntil?: any;
+  // Freemium Monetization fields
+  verificationStatus: "none" | "pending" | "approved" | "rejected";
+  isVerified: boolean;
+  isPremium: boolean;
+  subscriptionPlan: 'free' | 'premium';
+  featuredUntil: any | null;
   promotionLevel: number; // For future tier sorting
   views: number;
   contactClicks: number;
@@ -56,12 +60,19 @@ export const BUSINESS_CATEGORIES = [
 ];
 
 class BusinessService {
-  async registerBusiness(business: Omit<BusinessProfile, "id" | "verified" | "featured" | "promotionLevel" | "views" | "contactClicks" | "createdAt" | "updatedAt">) {
+  async registerBusiness(business: Omit<BusinessProfile, "id" | "isVerified" | "isPremium" | "subscriptionPlan" | "featuredUntil" | "promotionLevel" | "views" | "contactClicks" | "verificationStatus" | "createdAt" | "updatedAt">) {
+    await SecurityService.enforceRateLimit("business_register");
     const colRef = collection(db, "businesses");
     const docRef = await addDoc(colRef, {
       ...business,
-      verified: false,
-      featured: false,
+      businessName: sanitizeText(business.businessName, 120),
+      description: sanitizeText(business.description, 2000),
+      address: sanitizeText(business.address, 300),
+      verificationStatus: "none",
+      isVerified: false,
+      isPremium: false,
+      subscriptionPlan: 'free',
+      featuredUntil: null,
       promotionLevel: 0,
       views: 0,
       contactClicks: 0,
@@ -86,10 +97,13 @@ class BusinessService {
     const snapshot = await getDocs(q);
     const businesses = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as BusinessProfile));
     
-    // Sort locally by featured and promotionLevel
+    // Sort locally by Premium Status (Featured), Verification, then Promotion Level
     return businesses.sort((a: any, b: any) => {
-      if (a.featured !== b.featured) {
-        return a.featured ? -1 : 1;
+      if (a.isPremium !== b.isPremium) {
+        return a.isPremium ? -1 : 1;
+      }
+      if (a.isVerified !== b.isVerified) {
+        return a.isVerified ? -1 : 1;
       }
       return (b.promotionLevel || 0) - (a.promotionLevel || 0);
     });

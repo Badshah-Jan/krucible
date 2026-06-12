@@ -1,53 +1,48 @@
-import CategoryChips from "@/components/feed/CategoryChips";
 import PostCard from "@/components/feed/PostCard";
 import { chipIdToFirestoreValue } from "@/constants/categories";
 import { useLocationGuard } from "@/hooks/useLocationGuard";
 import { useNotifications } from "@/hooks/useNotifications";
 import { AuthService } from "@/services/authService";
+import BusinessService, { BusinessProfile } from "@/services/businessService";
 import { CommunityDoc, CommunityService } from "@/services/communityService";
 import { Post as FirestorePost, PostService } from "@/services/postService";
-import { SosService, SOSAlert } from "@/services/sosService";
 import ProviderService, { ServiceProvider } from "@/services/providerService";
-import BusinessService, { BusinessProfile } from "@/services/businessService";
+import { SOSAlert, SosService } from "@/services/sosService";
 import { UserService } from "@/services/userService";
 import { useAppStore } from "@/store/appStore";
 import { formatDistance, haversineDistance } from "@/utils/distance";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useState
-} from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  RefreshControl,
+  FlatList,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 
 const PX = 16;
 
 const T = {
-  bg: "#F8F9FA",
+  bg: "#F9FAFB",
   card: "#FFFFFF",
-  primary: "#EF4444",
-  text: "#111827",
-  textSecondary: "#6B7280",
-  border: "#E5E7EB",
-  danger: "#DC2626",
-  dangerBg: "#FEE2E2",
+  primary: "#4F46E5", // Premium Indigo instead of generic Red
+  text: "#0F172A", // Rich Slate
+  textSecondary: "#64748B",
+  border: "#E2E8F0", // Softer border
+  danger: "#E11D48", // Rose instead of standard Red
+  dangerBg: "#FFE4E6",
 };
 
 function getGreeting(): string {
@@ -89,11 +84,17 @@ export default function HomeFeedScreen() {
 
   const [livePosts, setLivePosts] = useState<FirestorePost[]>([]);
   const [activeSosAlerts, setActiveSosAlerts] = useState<SOSAlert[]>([]);
+  const [limitCount, setLimitCount] = useState(50);
   const [communityDoc, setCommunityDoc] = useState<CommunityDoc | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [featuredProviders, setFeaturedProviders] = useState<ServiceProvider[]>([]);
-  const [nearbyBusinesses, setNearbyBusinesses] = useState<BusinessProfile[]>([]);
+  const [featuredProviders, setFeaturedProviders] = useState<ServiceProvider[]>(
+    [],
+  );
+  const [nearbyBusinesses, setNearbyBusinesses] = useState<BusinessProfile[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
 
   // ── Real-time user profile ────────────────────────────────────────────────
@@ -114,11 +115,13 @@ export default function HomeFeedScreen() {
     return unsub;
   }, [community?.communityId, userProfile?.communityId]);
 
+  // ── Derived active community ID to stabilize dependencies ─────────────────
+  const activeCommunityId = community?.communityId ?? userProfile?.communityId;
+
   // ── Real-time post feed ───────────────────────────────────────────────────
   useEffect(() => {
-    const cid = community?.communityId ?? userProfile?.communityId;
     if (!authInitialized) return;
-    if (!cid) {
+    if (!activeCommunityId) {
       setIsLoading(false);
       return;
     }
@@ -127,7 +130,7 @@ export default function HomeFeedScreen() {
     setFeedError(null);
 
     const unsubPosts = PostService.subscribeToCommunityPosts(
-      cid,
+      activeCommunityId,
       coordinates?.lat,
       coordinates?.lng,
       (posts) => {
@@ -140,30 +143,18 @@ export default function HomeFeedScreen() {
         setFeedError("Could not load feed. Check your connection.");
         setIsLoading(false);
       },
+      limitCount
     );
 
-    const unsubSos = SosService.subscribeToActiveSOS(cid, (alerts) => {
+    const unsubSos = SosService.subscribeToActiveSOS(activeCommunityId, (alerts) => {
       setActiveSosAlerts(alerts);
     });
-
-    const loadMonetizationEntities = async () => {
-      try {
-        const providers = await ProviderService.getServicesByCommunity(cid);
-        setFeaturedProviders(providers.filter(p => p.featured).slice(0, 5));
-        
-        const businesses = await BusinessService.getBusinessesByCommunity(cid);
-        setNearbyBusinesses(businesses.slice(0, 5));
-      } catch (err) {
-        console.warn("Could not load monetization entities", err);
-      }
-    };
-    loadMonetizationEntities();
 
     // Auto-heal missing communityId in user profile
     const healProfile = async () => {
       const me = AuthService.getCurrentUser();
-      if (me && cid && userProfile && !userProfile.communityId) {
-        await UserService.updateUser(me.uid, { communityId: cid } as any);
+      if (me && activeCommunityId && userProfile && !userProfile.communityId) {
+        await UserService.updateUser(me.uid, { communityId: activeCommunityId } as any);
       }
     };
     healProfile();
@@ -172,13 +163,29 @@ export default function HomeFeedScreen() {
       unsubPosts();
       unsubSos();
     };
-  }, [
-    authInitialized,
-    community?.communityId,
-    userProfile?.communityId,
-    coordinates?.lat,
-    coordinates?.lng,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authInitialized, activeCommunityId, limitCount]);
+
+  // ── Refresh businesses and providers when screen comes into focus ───────
+  useFocusEffect(
+    useCallback(() => {
+      const cid = community?.communityId ?? userProfile?.communityId;
+      if (!cid) return;
+
+      const loadMonetizationEntities = async () => {
+        try {
+          const providers = await ProviderService.getServicesByCommunity(cid);
+          setFeaturedProviders(providers.slice(0, 5));
+
+          const businesses = await BusinessService.getBusinessesByCommunity(cid);
+          setNearbyBusinesses(businesses.slice(0, 5));
+        } catch (err) {
+          console.warn("Could not load monetization entities", err);
+        }
+      };
+      loadMonetizationEntities();
+    }, [community?.communityId, userProfile?.communityId])
+  );
 
   // ── Derived stats ─────────────────────────────────────────────────────────
   const oneDayAgo = Date.now() - 86_400_000;
@@ -190,6 +197,12 @@ export default function HomeFeedScreen() {
     const d = p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt);
     return d.getTime() > oneDayAgo;
   }).length;
+
+  const helpTodayCount = livePosts.filter(p => isWithin24h(p.createdAt) && p.category?.toLowerCase() === 'help').length;
+  const lostTodayCount = livePosts.filter(p => isWithin24h(p.createdAt) && (p.category?.toLowerCase() === 'lost & found' || p.category?.toLowerCase() === 'lost_found' || p.category?.toLowerCase() === 'lost')).length;
+  const recommendationsTodayCount = livePosts.filter(p => isWithin24h(p.createdAt) && p.category?.toLowerCase() === 'recommendations').length;
+  const activeAlertsCount = livePosts.filter(p => p.category?.toLowerCase() === 'community alert').length;
+  const availableProvidersCount = featuredProviders.filter(p => p.availabilityStatus === 'available_now').length;
 
   const memberCount =
     communityDoc?.memberCount ??
@@ -233,8 +246,8 @@ export default function HomeFeedScreen() {
           return {
             ...p,
             likesCount: liked
-              ? Math.max(0, p.likesCount - 1)
-              : p.likesCount + 1,
+              ? Math.max(0, (p.likesCount || 0) - 1)
+              : (p.likesCount || 0) + 1,
             likedBy: liked
               ? (p.likedBy ?? []).filter((u) => u !== me.uid)
               : [...(p.likedBy ?? []), me.uid],
@@ -251,7 +264,7 @@ export default function HomeFeedScreen() {
   // ── Feed items ──────────────────────────────────────────────────────────
   const feedItems = useMemo(() => {
     // 1. Map SOS Alerts into feed-friendly cards
-    const sosItems = activeSosAlerts.map(alert => {
+    const sosItems = activeSosAlerts.map((alert) => {
       let dist = "Nearby";
       if (coordinates && alert.location?.lat && alert.location?.lng) {
         dist = formatDistance(
@@ -267,13 +280,13 @@ export default function HomeFeedScreen() {
         id: `sos_${alert.id}`,
         originalId: alert.id,
         userName: alert.creatorName,
-        userAvatar: "", 
+        userAvatar: "",
         timePosted: getTimeAgo(alert.createdAt),
         distance: dist,
         likes: 0,
-        commentsCount: alert.respondersCount || 0, 
+        commentsCount: alert.respondersCount || 0,
         likedByMe: false,
-        category: "Emergency", 
+        category: "Emergency",
         title: `🚨 ${alert.type}`,
         description: `Emergency reported in ${alert.location.area}. Status: ${alert.status.toUpperCase()}`,
         createdAt: alert.createdAt,
@@ -308,12 +321,34 @@ export default function HomeFeedScreen() {
       };
     });
 
-    // 3. Combine and sort
-    const combined = [...sosItems, ...postItems];
+    // 3. Combine and sort (exclude recommendations from main feed)
+    const combined = selectedCategory === "all"
+      ? [...sosItems, ...postItems.filter(p => p.category?.toLowerCase() !== 'recommendations')]
+      : selectedCategory === "emergency"
+      ? [...sosItems, ...postItems.filter((p) => p.category?.toLowerCase() === "emergency")]
+      : postItems.filter((p) => {
+          if (p.category?.toLowerCase() === 'recommendations') return false;
+          const firestoreVal = chipIdToFirestoreValue(selectedCategory);
+          return firestoreVal
+            ? p.category?.toLowerCase() === firestoreVal.toLowerCase()
+            : true;
+        });
+
+    // Sort by Distance (5km buckets) then Time
     combined.sort((a, b) => {
-       const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-       const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-       return bTime - aTime;
+      const aDist = (a as any).distanceKm ?? 999;
+      const bDist = (b as any).distanceKm ?? 999;
+      
+      const aBucket = Math.floor(aDist / 5);
+      const bBucket = Math.floor(bDist / 5);
+      
+      if (aBucket !== bBucket) {
+        return aBucket - bBucket;
+      }
+
+      const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+      const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+      return bTime - aTime;
     });
 
     return combined;
@@ -332,7 +367,7 @@ export default function HomeFeedScreen() {
         {/* ── HEADER ── */}
         <View style={s.header}>
           <View>
-            <Text style={s.headerGreeting}>{getGreeting()},</Text>
+            <Text style={s.headerGreeting}>{getGreeting()}, 👋</Text>
             <Text style={s.headerName}>{displayName}</Text>
           </View>
           <View style={s.headerActions}>
@@ -349,118 +384,146 @@ export default function HomeFeedScreen() {
               <Ionicons name="notifications-outline" size={20} color={T.text} />
               {unreadCount > 0 && <View style={s.redDot} />}
             </TouchableOpacity>
+            <TouchableOpacity
+              style={s.avatarBtn}
+              onPress={() => router.push("/profile")}
+            >
+              <Image
+                source={{
+                  uri:
+                    userProfile?.photoURL ||
+                    me?.photoURL ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`,
+                }}
+                style={s.avatar}
+              />
+            </TouchableOpacity>
           </View>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 112 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={isLoading}
-              onRefresh={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 800);
-              }}
-              colors={[T.primary]}
-              tintColor={T.primary}
-            />
-          }
-        >
-          <View>
-            {/* ── NEIGHBOURHOOD BAR ── */}
-            <TouchableOpacity
-              style={s.locationBar}
-              activeOpacity={0.8}
-              onPress={() => setNeighModal(true)}
-            >
-              <View style={s.locPinCircle}>
-                <Ionicons name="location" size={16} color="#FFFFFF" />
-              </View>
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={s.locLabel}>Your neighbourhood</Text>
-                <Text style={s.locName} numberOfLines={1}>
-                  {areaName}
-                </Text>
-              </View>
-              <Ionicons name="chevron-down" size={18} color={T.textSecondary} />
-            </TouchableOpacity>
+        {/* ── LOCATION BAR ── */}
+        <View style={s.locationContainer}>
+          <TouchableOpacity
+            style={s.locationBar}
+            activeOpacity={0.8}
+            onPress={() => setNeighModal(true)}
+          >
+            <Ionicons name="location" size={14} color="#6366F1" />
+            <Text style={s.locName} numberOfLines={1}>
+              {areaName}
+            </Text>
+            <Ionicons name="chevron-down" size={14} color={T.textSecondary} />
+          </TouchableOpacity>
+          <View style={s.tagsRow}>
+            <View style={s.tagGreen}>
+              <View style={s.tagGreenDot} />
+              <Text style={s.tagGreenText}>Community active</Text>
+            </View>
+            <View style={s.tagGray}>
+              <Ionicons
+                name="people-outline"
+                size={12}
+                color={T.textSecondary}
+              />
+              <Text style={s.tagGrayText}>{memberCount} neighbours</Text>
+            </View>
+          </View>
+        </View>
 
-            {/* ── HERO CARD ── */}
-            <Animated.View
-              entering={FadeInDown.duration(400)}
-              style={s.heroContainer}
-            >
-              <View style={s.heroCard}>
-                <View style={s.heroBadgeRow}>
-                  <View
-                    style={[
-                      s.heroBadge,
-                      {
-                        backgroundColor:
-                          activeSosCount > 0 ? "#450A0A" : "#1A2E1A",
-                      },
-                    ]}
-                  >
-                    <View
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: 4,
-                        backgroundColor:
-                          activeSosCount > 0 ? "#EF4444" : "#22C55E",
-                        marginRight: 6,
-                      }}
-                    />
-                    <Text
-                      style={[
-                        s.heroBadgeText,
-                        { color: activeSosCount > 0 ? "#FCA5A5" : "#86EFAC" },
-                      ]}
-                    >
-                      {activeSosCount > 0
-                        ? `${activeSosCount} active alert${activeSosCount > 1 ? "s" : ""} nearby`
-                        : "All clear nearby"}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={s.heroTitle}>
-                  Your community is looking out for you
-                </Text>
-                <Text style={s.heroSubtitle}>
-                  Stay informed, offer help, and build trust with your
-                  neighbours in real time.
-                </Text>
-                <TouchableOpacity
-                  style={s.heroBtn}
-                  onPress={() => setSelectedCategory("emergency")}
-                >
-                  <Text style={s.heroBtnText}>View alerts →</Text>
-                </TouchableOpacity>
-                <View style={s.heroDivider} />
-                <View style={s.heroStats}>
-                  <View style={s.heroStatCol}>
-                    <Text style={s.heroStatVal}>{memberCount}</Text>
-                    <Text style={s.heroStatLbl}>Members</Text>
-                  </View>
-                  <View style={s.heroStatCol}>
-                    <Text style={s.heroStatVal}>{activeTodayCount}</Text>
-                    <Text style={s.heroStatLbl}>Active today</Text>
-                  </View>
-                  <View style={s.heroStatCol}>
-                    <Text style={s.heroStatVal}>
-                      {activeSosCount > 0 ? activeSosCount : "–"}
-                    </Text>
-                    <Text style={s.heroStatLbl}>Active SOS</Text>
-                  </View>
-                </View>
+        
+          <FlatList
+            data={feedItems}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 112 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => {
+                  setIsRefreshing(true);
+                  // Optionally reset pagination limit on manual refresh
+                  setLimitCount(50);
+                  setTimeout(() => setIsRefreshing(false), 800);
+                }}
+                colors={[T.primary]}
+                tintColor={T.primary}
+              />
+            }
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={5}
+            removeClippedSubviews={true}
+            ListHeaderComponent={(
+              <View>
+            {/* ── COMMUNITY PULSE ── */}
+            <Animated.View entering={FadeInDown.duration(400)} style={s.sectionContainer}>
+              <View style={s.sectionHeader}>
+                <Text style={s.sectionTitle}>Today's Community Pulse</Text>
               </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: PX, gap: 12, paddingBottom: 16 }}>
+                {activeSosCount > 0 && (
+                  <View style={[s.pulseCard, { borderColor: '#FECDD3', backgroundColor: '#FFF1F2' }]}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>🚨</Text>
+                    <Text style={[s.pulseCount, { color: '#E11D48' }]}>{activeSosCount}</Text>
+                    <Text style={s.pulseLabel}>Active SOS</Text>
+                  </View>
+                )}
+                {activeAlertsCount > 0 && (
+                  <View style={[s.pulseCard, { borderColor: '#FDE68A', backgroundColor: '#FFFBEB' }]}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>📢</Text>
+                    <Text style={[s.pulseCount, { color: '#D97706' }]}>{activeAlertsCount}</Text>
+                    <Text style={s.pulseLabel}>Alerts</Text>
+                  </View>
+                )}
+                {helpTodayCount > 0 && (
+                  <View style={[s.pulseCard, { borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' }]}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>🤝</Text>
+                    <Text style={[s.pulseCount, { color: '#2563EB' }]}>{helpTodayCount}</Text>
+                    <Text style={s.pulseLabel}>Help Requests</Text>
+                  </View>
+                )}
+                {lostTodayCount > 0 && (
+                  <View style={[s.pulseCard, { borderColor: '#D1FAE5', backgroundColor: '#ECFDF5' }]}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>🔍</Text>
+                    <Text style={[s.pulseCount, { color: '#10B981' }]}>{lostTodayCount}</Text>
+                    <Text style={s.pulseLabel}>Lost & Found</Text>
+                  </View>
+                )}
+                {recommendationsTodayCount > 0 && (
+                  <View style={[s.pulseCard, { borderColor: '#E9D5FF', backgroundColor: '#FAF5FF' }]}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>⭐</Text>
+                    <Text style={[s.pulseCount, { color: '#9333EA' }]}>{recommendationsTodayCount}</Text>
+                    <Text style={s.pulseLabel}>Recommendations</Text>
+                  </View>
+                )}
+                {availableProvidersCount > 0 && (
+                  <View style={[s.pulseCard, { borderColor: '#E5E7EB', backgroundColor: '#F9FAFB' }]}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>🔧</Text>
+                    <Text style={[s.pulseCount, { color: '#4B5563' }]}>{availableProvidersCount}</Text>
+                    <Text style={s.pulseLabel}>Available Now</Text>
+                  </View>
+                )}
+                {activeSosCount === 0 && activeAlertsCount === 0 && helpTodayCount === 0 && lostTodayCount === 0 && recommendationsTodayCount === 0 && availableProvidersCount === 0 && (
+                  <View style={[s.pulseCard, { borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', width: 200 }]}>
+                    <Text style={{ fontSize: 20, marginBottom: 4 }}>✨</Text>
+                    <Text style={[s.pulseLabel, { textAlign: 'center' }]}>All quiet in the community today. Enjoy the peace!</Text>
+                  </View>
+                )}
+              </ScrollView>
             </Animated.View>
 
             {/* ── QUICK ACTIONS ── */}
-            <Animated.View entering={FadeInDown.duration(350).delay(100)}>
-              <View style={s.sectionHead}>
+            <Animated.View
+              entering={FadeInDown.duration(350).delay(100)}
+              style={s.sectionContainer}
+            >
+              <View style={s.sectionHeader}>
                 <Text style={s.sectionTitle}>Quick actions</Text>
+                <TouchableOpacity onPress={() => {}}>
+                  <Text style={s.sectionLink}>
+                    Customize <Ionicons name="settings-outline" size={12} />
+                  </Text>
+                </TouchableOpacity>
               </View>
               <ScrollView
                 horizontal
@@ -470,160 +533,64 @@ export default function HomeFeedScreen() {
                 {(
                   [
                     {
-                      color1: "#FEE2E2",
-                      color2: "#FEF2F2",
-                      border: "#EF4444",
+                      color: "#EF4444",
                       icon: "alert",
                       label: "SOS Alert",
-                      textColor: "#EF4444",
                       route: "/sos",
                     },
                     {
-                      color1: "#DBEAFE",
-                      color2: "#EFF6FF",
-                      border: "#2563EB",
+                      color: "#3B82F6",
                       icon: "hand-left-outline",
                       label: "Need Help",
-                      textColor: "#2563EB",
                       route: "/post/create?type=help",
                     },
                     {
-                      color1: "#D1FAE5",
-                      color2: "#ECFDF5",
-                      border: "#10B981",
+                      color: "#10B981",
                       icon: "heart-outline",
                       label: "Offer Help",
-                      textColor: "#10B981",
                       route: "/post/create?type=offer",
                     },
                     {
-                      color1: "#E9D5FF",
-                      color2: "#FAF5FF",
-                      border: "#9333EA",
-                      icon: "star-outline",
-                      label: "Recommend",
-                      textColor: "#9333EA",
-                      route: "/post/create?type=recommend",
+                      color: "#8B5CF6",
+                      icon: "briefcase-outline",
+                      label: "Services",
+                      route: "/services",
                     },
                     {
-                      color1: "#FEF3C7",
-                      color2: "#FFFBEB",
-                      border: "#D97706",
+                      color: "#F59E0B",
                       icon: "search-outline",
                       label: "Lost & Found",
-                      textColor: "#D97706",
                       route: "/post/create?type=lost",
                     },
                   ] as const
                 ).map((a) => (
                   <TouchableOpacity
                     key={a.label}
-                    style={[
-                      s.actionCard,
-                      { borderColor: a.color1, backgroundColor: a.color2 },
-                    ]}
+                    style={s.actionCard}
                     onPress={() => router.push(a.route as any)}
                   >
-                    <View
-                      style={[
-                        s.actionRing,
-                        { backgroundColor: a.color1, borderColor: a.border },
-                      ]}
-                    >
+                    <View style={[s.actionRing, { borderColor: a.color, backgroundColor: a.color + "18" }]}>
                       <Ionicons
                         name={a.icon as any}
-                        size={18}
-                        color={a.border}
+                        size={20}
+                        color={a.color}
                       />
                     </View>
-                    <Text style={[s.actionText, { color: a.textColor }]}>
-                      {a.label}
-                    </Text>
+                    <Text style={s.actionText}>{a.label}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
             </Animated.View>
 
-            {/* ── MARKETPLACE BANNER ── */}
-            <Animated.View entering={FadeInDown.duration(350).delay(150)}>
-              <View style={s.sectionHead}>
-                <Text style={s.sectionTitle}>Local Services</Text>
-              </View>
-              <TouchableOpacity
-                style={s.marketplaceBanner}
-                onPress={() => router.push("/services" as any)}
-                activeOpacity={0.9}
-              >
-                <View style={s.marketIcon}>
-                  <Ionicons name="briefcase" size={22} color="#FFFFFF" />
-                </View>
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={s.marketTitle}>Service Marketplace</Text>
-                  <Text style={s.marketSub}>
-                    Find local plumbers, electricians, tutors, and more
-                  </Text>
-                </View>
-                <View style={s.marketAction}>
-                  <Text style={s.marketActionText}>Explore</Text>
-                  <Ionicons name="arrow-forward" size={12} color="#4F46E5" />
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
-
-            {/* ── LOCAL HIGHLIGHTS (COMBINED) ── */}
-            {(featuredProviders.length > 0 || nearbyBusinesses.length > 0) && (
-              <Animated.View entering={FadeInDown.duration(350).delay(150)}>
-                <View style={s.sectionHead}>
-                  <Text style={s.sectionTitle}>Local Highlights</Text>
-                  <TouchableOpacity onPress={() => router.push("/businesses" as any)}>
-                    <Text style={{color: T.primary, fontSize: 13, fontWeight: "600"}}>Explore</Text>
-                  </TouchableOpacity>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: PX, paddingTop: 12, paddingBottom: 8, gap: 12 }}>
-                  {featuredProviders.map(provider => (
-                    <TouchableOpacity 
-                      key={`prov-${provider.id}`} 
-                      style={s.featuredCard}
-                      onPress={() => router.push(`/services/${provider.id}` as any)}
-                    >
-                      <View style={[s.featuredBadge, { backgroundColor: '#F59E0B' }]}>
-                        <Ionicons name="star" size={10} color="#FFFFFF" />
-                        <Text style={s.featuredBadgeText}>Featured</Text>
-                      </View>
-                      <View style={s.featuredIconBox}>
-                        <Ionicons name="person" size={20} color="#FFFFFF" />
-                      </View>
-                      <Text style={s.featuredName} numberOfLines={1}>{provider.name}</Text>
-                      <Text style={s.featuredCat}>{provider.category}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  {nearbyBusinesses.map(biz => (
-                    <TouchableOpacity 
-                      key={`biz-${biz.id}`} 
-                      style={s.bizCard}
-                      onPress={() => router.push(`/businesses/${biz.id}` as any)}
-                    >
-                      <View style={s.bizIconBox}>
-                        <Ionicons name="storefront" size={24} color="#6366F1" />
-                      </View>
-                      <Text style={s.bizName} numberOfLines={1}>{biz.businessName}</Text>
-                      <Text style={s.bizCat}>{biz.category}</Text>
-                      {biz.verified && (
-                        <View style={s.bizVerified}>
-                          <Ionicons name="checkmark-circle" size={12} color="#10B981" />
-                          <Text style={s.bizVerifiedText}>Verified</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </Animated.View>
-            )}
-
-            {/* ── FEED HEADER ── */}
-            <Animated.View entering={FadeIn.delay(250)}>
-              <View style={s.sectionHead}>
-                <Text style={s.sectionTitle}>Community feed</Text>
+            {/* ── EMERGENCY FEED ── */}
+            <Animated.View
+              entering={FadeIn.delay(250)}
+              style={s.sectionContainer}
+            >
+              <View style={s.sectionHeader}>
+                <Text style={s.sectionTitle}>
+                  {selectedCategory === "all" ? "Community feed" : selectedCategory === "emergency" ? "Active emergencies" : selectedCategory === "help" ? "Help requests" : selectedCategory === "general" ? "General posts" : "Lost & Found"}
+                </Text>
                 <Pressable
                   style={s.postBtn}
                   onPress={() => {
@@ -634,13 +601,27 @@ export default function HomeFeedScreen() {
                   <Text style={s.postBtnText}>+ Post</Text>
                 </Pressable>
               </View>
-              <CategoryChips
-                selectedCategory={selectedCategory}
-                onSelectCategory={setSelectedCategory}
-              />
+              {/* Category filter chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.chipsRow}
+              >
+                {(["all", "emergency", "help", "general", "lost"] as const).map((cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[s.chip, selectedCategory === cat && s.chipActive]}
+                    onPress={() => setSelectedCategory(cat)}
+                  >
+                    <Text style={[s.chipText, selectedCategory === cat && s.chipTextActive]}>
+                      {cat === "all" ? "All" : cat === "emergency" ? "🚨 Emergency" : cat === "help" ? "🤝 Help" : cat === "general" ? "📢 General" : "🔍 Lost & Found"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </Animated.View>
 
-            {/* ── STATES (GPS off / error / loading) ── */}
+            {/* ── STATES AND FEED LIST ── */}
             {isGpsDisabled ? (
               <View style={[s.stateBox, { marginHorizontal: PX }]}>
                 <Ionicons
@@ -673,54 +654,394 @@ export default function HomeFeedScreen() {
               <View
                 style={{ paddingVertical: 52, alignItems: "center", gap: 12 }}
               >
-                <ActivityIndicator size="small" color={T.primary} />
+                <ActivityIndicator size="small" color="#6366F1" />
                 <Text style={{ color: T.textSecondary, fontSize: 13 }}>
                   Loading feed…
                 </Text>
               </View>
-            ) : feedItems.length === 0 ? (
-              <View style={[s.onboardingCard, { marginHorizontal: PX }]}>
-                <View style={s.onboardingIconBg}>
-                  <Ionicons name="people-outline" size={36} color={T.primary} />
-                </View>
-                <Text style={s.onboardingTitle}>Welcome to your community</Text>
-                <Text style={s.onboardingDesc}>
-                  Be the first to ask for help, share recommendations, or
-                  connect with neighbors.
-                </Text>
-                <TouchableOpacity
-                  style={s.onboardingPrimaryBtn}
-                  onPress={() => {
-                    if (!go("Post")) return;
-                    router.push("/post/create");
-                  }}
-                >
-                  <Text style={s.onboardingPrimaryBtnText}>Create Post</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={{ paddingHorizontal: PX }}>
-                {feedItems.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    onPress={() => 
-                      post.isSos 
-                        ? router.push(`/sos/${post.originalId}` as any) 
-                        : router.push(`/post/${post.id}` as any)
-                    }
-                    onLikePress={() => !post.isSos && handleLike(post as FirestorePost)}
-                    onCommentPress={() =>
-                      post.isSos 
-                        ? router.push(`/sos/${post.originalId}` as any) 
-                        : router.push(`/post/${post.id}` as any)
-                    }
-                  />
-                ))}
+            ) : null}
               </View>
             )}
+            ListEmptyComponent={(
+              <View style={[s.onboardingCard, { marginHorizontal: PX }]}>
+                <View style={[s.onboardingIconBg, { backgroundColor: "#ECFDF5" }]}>
+                  <Ionicons name="shield-checkmark-outline" size={36} color="#10B981" />
+                </View>
+                <Text style={s.onboardingTitle}>All clear nearby</Text>
+                <Text style={s.onboardingDesc}>
+                  {selectedCategory === "all"
+                    ? "No posts in your community yet. Be the first to post!"
+                    : "No active emergencies in your area right now. Rest easy!"}
+                </Text>
+              </View>
+            )}
+            renderItem={({ item: post }) => (
+              <View style={{ paddingHorizontal: PX }}>
+                <PostCard
+                  post={post}
+                  onPress={() =>
+                    post.isSos
+                      ? router.push(`/sos/${(post as any).originalId}` as any)
+                      : router.push(`/post/${post.id}` as any)
+                  }
+                  onLikePress={() =>
+                    !post.isSos && handleLike(post as FirestorePost)
+                  }
+                  onCommentPress={() =>
+                    post.isSos
+                      ? router.push(`/sos/${(post as any).originalId}` as any)
+                      : router.push(`/post/${post.id}` as any)
+                  }
+                />
+              </View>
+            )}
+            onEndReached={() => {
+              if (feedItems.length >= limitCount) {
+                setLimitCount(prev => prev + 50);
+              }
+            }}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={(
+              <View>
+
+            {/* ── SECTION DIVIDER ── */}
+            <View
+              style={{
+                height: 1,
+                backgroundColor: "#F3F4F6",
+                marginHorizontal: PX,
+                marginBottom: 24,
+                marginTop: 8,
+              }}
+            />
+
+            {/* ── COMMUNITY RECOMMENDATIONS ── */}
+            {livePosts.filter(p => p.category?.toLowerCase() === 'recommendations').length > 0 && (
+              <Animated.View entering={FadeInDown.duration(350).delay(100)} style={s.sectionContainer}>
+                <View style={s.sectionHeader}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+                    <Text style={s.sectionTitle}>Community Recommendations</Text>
+                  </View>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: PX, gap: 12, paddingBottom: 16 }}>
+                  {livePosts.filter(p => p.category?.toLowerCase() === 'recommendations').slice(0, 5).map(post => (
+                    <View key={`rec-${post.id}`} style={{ width: 300 }}>
+                      <PostCard
+                        post={post as any}
+                        onPress={() => router.push(`/post/${post.id}` as any)}
+                        onLikePress={() => handleLike(post as FirestorePost)}
+                        onCommentPress={() => router.push(`/post/${post.id}` as any)}
+                      />
+                    </View>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            )}
+
+            {/* ── AVAILABLE PROVIDERS ── */}
+            {featuredProviders.filter(p => p.availabilityStatus === 'available_now').length > 0 && (
+              <Animated.View entering={FadeInDown.duration(350).delay(150)} style={s.sectionContainer}>
+                <View style={s.sectionHeader}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Ionicons name="flash" size={16} color="#10B981" style={{ marginRight: 6 }} />
+                    <Text style={s.sectionTitle}>Available Right Now</Text>
+                  </View>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: PX, gap: 12, paddingBottom: 16 }}>
+                  {featuredProviders.filter(p => p.availabilityStatus === 'available_now').map(provider => (
+                    <TouchableOpacity key={`avail-${provider.id}`} style={s.availableProviderCard} onPress={() => router.push(`/services/${provider.id}` as any)}>
+                      <View style={s.availableProviderHeader}>
+                        <View style={s.providerInitialsBox}>
+                           <Text style={s.providerInitials}>{provider.name.charAt(0)}</Text>
+                        </View>
+                        <View style={s.availableBadge}>
+                          <View style={s.availableDot} />
+                          <Text style={s.availableText}>Available</Text>
+                        </View>
+                      </View>
+                      <Text style={s.providerName} numberOfLines={1}>{provider.name}</Text>
+                      <Text style={s.providerCategory}>{provider.category}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            )}
+
+            {/* ── EXPLORE MARKETPLACE (Categories) ── */}
+            <Animated.View
+              entering={FadeInDown.duration(350).delay(150)}
+              style={s.sectionContainer}
+            >
+              <View style={s.sectionHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons
+                    name="grid-outline"
+                    size={16}
+                    color={T.text}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={s.sectionTitle}>Browse categories</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => router.push("/services" as any)}
+                >
+                  <Text style={s.sectionLink}>View all &gt;</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{
+                  paddingHorizontal: PX,
+                  paddingBottom: 16,
+                  paddingTop: 4,
+                  gap: 12,
+                }}
+              >
+                {[
+                  {
+                    icon: "hammer-outline",
+                    label: "Home Services",
+                    color: "#8B5CF6",
+                    bg: "#F5F3FF",
+                  },
+                  {
+                    icon: "school-outline",
+                    label: "Tutors",
+                    color: "#10B981",
+                    bg: "#ECFDF5",
+                  },
+                  {
+                    icon: "car-outline",
+                    label: "Transport",
+                    color: "#3B82F6",
+                    bg: "#EFF6FF",
+                  },
+                  {
+                    icon: "desktop-outline",
+                    label: "Electronics",
+                    color: "#F59E0B",
+                    bg: "#FFFBEB",
+                  },
+                  {
+                    icon: "fitness-outline",
+                    label: "Health & Wellness",
+                    color: "#EF4444",
+                    bg: "#FEF2F2",
+                  },
+                ].map((cat) => (
+                  <TouchableOpacity
+                    key={cat.label}
+                    style={s.catCard}
+                    onPress={() =>
+                      router.push(`/services?category=${cat.label}` as any)
+                    }
+                  >
+                    <View style={[s.catIconBox, { backgroundColor: cat.bg }]}>
+                      <Ionicons
+                        name={cat.icon as any}
+                        size={20}
+                        color={cat.color}
+                      />
+                    </View>
+                    <Text style={s.catLabel} numberOfLines={1}>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Animated.View>
+
+            {/* ── EXPLORE MARKETPLACE ── */}
+            {featuredProviders.length > 0 ? (
+              <Animated.View
+                entering={FadeInDown.duration(350).delay(150)}
+                style={s.sectionContainer}
+              >
+                <View style={s.sectionHeader}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Ionicons
+                      name="briefcase-outline"
+                      size={16}
+                      color={T.text}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={s.sectionTitle}>
+                      Featured providers{" "}
+                      <Text style={{ color: "#F59E0B" }}>★</Text>
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => router.push("/services" as any)}
+                  >
+                    <Text style={s.sectionLink}>See all &gt;</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingHorizontal: PX,
+                    paddingBottom: 16,
+                    paddingTop: 4,
+                    gap: 12,
+                  }}
+                >
+                  {featuredProviders.map((provider) => (
+                    <TouchableOpacity
+                      key={`prov-${provider.id}`}
+                      style={s.featuredCard}
+                      onPress={() =>
+                        router.push(`/services/${provider.id}` as any)
+                      }
+                    >
+                      <View>
+                        <Image
+                          source={{
+                            uri:
+                              (provider as any).images?.[0] ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(provider.name)}&background=random`,
+                          }}
+                          style={[s.featuredAvatar, provider.isPremium && { borderWidth: 2, borderColor: '#F59E0B' }]}
+                        />
+                        {provider.isPremium && (
+                          <View style={{ position: 'absolute', bottom: -4, alignSelf: 'center', backgroundColor: '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                            <Text style={{ color: '#FFF', fontSize: 8, fontWeight: '800', textTransform: 'uppercase' }}>PRO</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.featuredName} numberOfLines={1}>
+                          {provider.name}
+                        </Text>
+                        <View style={s.featuredRatingRow}>
+                          <Ionicons name="star" size={10} color="#6366F1" />
+                          <Text style={s.featuredRatingText}>
+                            {provider.rating?.toFixed(1) || "New"}
+                          </Text>
+                          <Text style={s.featuredReviewsText}>
+                            ({provider.reviewCount || 0})
+                          </Text>
+                        </View>
+                        <View style={s.featuredCatRow}>
+                          <Ionicons name="water" size={10} color="#3B82F6" />
+                          <Text style={s.featuredCatText} numberOfLines={1}>
+                            {provider.category}
+                          </Text>
+                        </View>
+                        <View style={s.featuredDistRow}>
+                          <Ionicons
+                            name="location-outline"
+                            size={10}
+                            color={T.textSecondary}
+                          />
+                          <Text style={s.featuredDistText}>Nearby</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            ) : (
+              <Animated.View
+                entering={FadeInDown.duration(350).delay(150)}
+                style={s.sectionContainer}
+              >
+                <View style={s.sectionHeader}>
+                  <Text style={s.sectionTitle}>Featured providers</Text>
+                </View>
+                <TouchableOpacity
+                  style={[s.onboardingCard, { marginHorizontal: PX, marginTop: 4 }]}
+                  onPress={() => router.push("/services/register" as any)}
+                >
+                  <View style={[s.onboardingIconBg, { backgroundColor: "#EEF2FF" }]}>
+                    <Ionicons name="briefcase-outline" size={32} color="#4F46E5" />
+                  </View>
+                  <Text style={s.onboardingTitle}>Offer a Service</Text>
+                  <Text style={s.onboardingDesc}>
+                    Be the first in your area to offer a local service. Reach out to your community and grow your clientele!
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+
+            {/* ── NEARBY BUSINESSES ── */}
+            {nearbyBusinesses.length > 0 ? (
+              <Animated.View
+                entering={FadeInDown.duration(350).delay(200)}
+                style={s.sectionContainer}
+              >
+                <View style={s.sectionHeader}>
+                  <Text style={s.sectionTitle}>Nearby businesses</Text>
+                  <TouchableOpacity
+                    onPress={() => router.push("/businesses" as any)}
+                  >
+                    <Text style={s.sectionLink}>See all &gt;</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingHorizontal: PX,
+                    paddingBottom: 16,
+                    paddingTop: 4,
+                    gap: 12,
+                  }}
+                >
+                  {nearbyBusinesses.map((biz) => (
+                    <TouchableOpacity
+                      key={`biz-${biz.id}`}
+                      style={[s.bizCard, biz.isPremium && { borderColor: '#FDE68A', backgroundColor: '#FFFBEB' }]}
+                      onPress={() =>
+                        router.push(`/businesses/${biz.id}` as any)
+                      }
+                    >
+                      {biz.isPremium && (
+                        <View style={{ position: 'absolute', top: -8, right: -8, backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, flexDirection: 'row', alignItems: 'center', shadowColor: "#F59E0B", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}>
+                          <Ionicons name="star" size={10} color="#FFF" style={{ marginRight: 2 }} />
+                          <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' }}>Premium</Text>
+                        </View>
+                      )}
+                      <View style={[s.bizIconBox, biz.isPremium && { backgroundColor: '#FEF3C7' }]}>
+                        <Ionicons name="storefront" size={20} color={biz.isPremium ? "#D97706" : "#10B981"} />
+                      </View>
+                      <Text style={s.bizName} numberOfLines={1}>
+                        {biz.businessName}
+                      </Text>
+                      {biz.isVerified && (
+                        <Text style={s.bizCat}>Verified Partner</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            ) : (
+              <Animated.View
+                entering={FadeInDown.duration(350).delay(200)}
+                style={s.sectionContainer}
+              >
+                <View style={s.sectionHeader}>
+                  <Text style={s.sectionTitle}>Nearby businesses</Text>
+                </View>
+                <TouchableOpacity
+                  style={[s.onboardingCard, { marginHorizontal: PX, marginTop: 4 }]}
+                  onPress={() => router.push("/businesses/register" as any)}
+                >
+                  <View style={[s.onboardingIconBg, { backgroundColor: "#FEF2F2" }]}>
+                    <Ionicons name="storefront-outline" size={32} color="#EF4444" />
+                  </View>
+                  <Text style={s.onboardingTitle}>List Your Business</Text>
+                  <Text style={s.onboardingDesc}>
+                    There are no businesses listed here yet. Be the first to list your business and reach your neighbors!
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
           </View>
-        </ScrollView>
+        )}
+      />
 
         {/* ── NEIGHBOURHOOD MODAL ── */}
         <Modal
@@ -740,7 +1061,7 @@ export default function HomeFeedScreen() {
               <View style={s.neighHandle} />
               <View style={s.neighIconWrap}>
                 <View style={s.neighIconCircle}>
-                  <Ionicons name="location" size={22} color="#EF4444" />
+                  <Ionicons name="location" size={22} color="#6366F1" />
                 </View>
               </View>
               <Text style={s.neighModalLabel}>YOUR NEIGHBOURHOOD</Text>
@@ -875,14 +1196,19 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.bg },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: PX,
     paddingTop: 12,
     paddingBottom: 8,
-    backgroundColor: T.bg,
   },
-  headerGreeting: { color: T.textSecondary, fontSize: 13, fontWeight: "500" },
+  headerGreeting: {
+    color: T.textSecondary,
+    fontSize: 13,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   headerName: {
     color: T.text,
     fontSize: 24,
@@ -890,321 +1216,562 @@ const s = StyleSheet.create({
     letterSpacing: -0.5,
     marginTop: 2,
   },
-  headerActions: { flexDirection: "row", gap: 10 },
+  headerActions: { flexDirection: "row", gap: 12, alignItems: "center" },
   circleBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: T.card,
-    borderWidth: 1,
-    borderColor: T.border,
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: T.border,
   },
   redDot: {
     position: "absolute",
-    top: 11,
-    right: 11,
+    top: 8,
+    right: 10,
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: T.primary,
-  },
-
-  locationBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: PX,
-    marginTop: 14,
-    backgroundColor: T.card,
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: T.border,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  locPinCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: T.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  locLabel: { color: T.textSecondary, fontSize: 10, fontWeight: "600" },
-  locName: { color: T.text, fontSize: 13, fontWeight: "700", marginTop: 1 },
-
-  heroContainer: { paddingHorizontal: PX, marginTop: 14, marginBottom: 6 },
-  heroCard: {
-    backgroundColor: "#1A1A1A",
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  heroBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  heroBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 100,
-  },
-  heroBadgeText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.1 },
-  heroTitle: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "800",
-    lineHeight: 23,
-    letterSpacing: -0.3,
-  },
-  heroSubtitle: {
-    color: "#9CA3AF",
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 5,
-    fontWeight: "400",
-  },
-  heroBtn: {
-    alignSelf: "flex-start",
-    backgroundColor: T.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 100,
-    marginTop: 14,
-  },
-  heroBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
-  heroDivider: { height: 1, backgroundColor: "#2D2D2D", marginVertical: 14 },
-  heroStats: { flexDirection: "row", justifyContent: "space-between" },
-  heroStatCol: { flex: 1 },
-  heroStatVal: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
-  heroStatLbl: {
-    color: "#9CA3AF",
-    fontSize: 10,
-    marginTop: 2,
-    fontWeight: "500",
-  },
-
-  quickActionsRow: {
-    flexDirection: "row",
-    paddingHorizontal: PX,
-    gap: 8,
-    paddingRight: PX * 2,
-  },
-  actionCard: {
-    width: 94,
-    borderRadius: 16,
+    backgroundColor: T.danger,
     borderWidth: 1.5,
-    paddingVertical: 14,
-    alignItems: "center",
-    gap: 8,
+    borderColor: T.card,
+  },
+  avatarBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  actionRing: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-  },
-  actionText: { fontSize: 10, fontWeight: "700", textAlign: "center" },
+  avatar: { width: "100%", height: "100%", backgroundColor: "#E2E8F0" },
 
-  sectionHead: {
+  locationContainer: {
+    paddingHorizontal: PX,
+    paddingBottom: 8,
+  },
+  locationBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: T.card,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: T.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  locName: {
+    color: T.text,
+    fontSize: 14,
+    fontWeight: "700",
+    marginHorizontal: 6,
+    maxWidth: 200,
+  },
+  tagsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    gap: 12,
+  },
+  tagGreen: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 100,
+    gap: 6,
+  },
+  tagGreenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#16A34A",
+  },
+  tagGreenText: { color: "#16A34A", fontSize: 12, fontWeight: "700" },
+  tagGray: { flexDirection: "row", alignItems: "center", gap: 6 },
+  tagGrayText: { color: T.textSecondary, fontSize: 12, fontWeight: "600" },
+
+  sectionContainer: { marginBottom: 16 },
+  sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: PX,
-    marginTop: 24,
-    marginBottom: 14,
+    marginBottom: 8,
   },
   sectionTitle: {
     color: T.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "800",
     letterSpacing: -0.3,
   },
-  postBtn: { paddingHorizontal: 4, paddingVertical: 2 },
-  postBtnText: { color: T.primary, fontSize: 13, fontWeight: "700" },
-  feedList: { paddingHorizontal: PX },
+  sectionLink: { color: T.primary, fontSize: 14, fontWeight: "700" },
+  postBtn: {
+    backgroundColor: T.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 100,
+    shadowColor: T.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  postBtnText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
+
+  pulseCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    minWidth: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  pulseCount: {
+    fontSize: 22,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  pulseLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: T.textSecondary,
+    textAlign: 'center',
+  },
+
+  quickActionsRow: {
+    paddingHorizontal: PX,
+    paddingBottom: 12,
+    paddingTop: 4,
+    gap: 16,
+    paddingRight: PX * 2,
+  },
+  actionCard: {
+    width: 96,
+    height: 104,
+    backgroundColor: T.card,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: T.border,
+    gap: 12,
+  },
+  actionRing: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chipsRow: {
+    paddingHorizontal: PX,
+    paddingBottom: 4,
+    paddingTop: 4,
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 100,
+    backgroundColor: T.card,
+    borderWidth: 1,
+    borderColor: T.border,
+  },
+  chipActive: {
+    backgroundColor: T.primary,
+    borderColor: T.primary,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: T.textSecondary,
+  },
+  chipTextActive: {
+    color: "#FFFFFF",
+  },
+  actionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: T.text,
+    textAlign: "center",
+  },
+
+  featuredCard: {
+    width: 260,
+    backgroundColor: T.card,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: T.border,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  featuredAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 16,
+    backgroundColor: "#E2E8F0",
+  },
+  featuredName: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: T.text,
+    marginBottom: 4,
+  },
+  featuredRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  featuredRatingText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#F59E0B",
+    marginLeft: 4,
+    marginRight: 6,
+  },
+  featuredReviewsText: { fontSize: 12, color: T.textSecondary },
+  featuredCatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  featuredCatText: { fontSize: 12, color: T.textSecondary, marginLeft: 6 },
+  featuredDistRow: { flexDirection: "row", alignItems: "center" },
+  featuredDistText: { fontSize: 12, color: T.textSecondary, marginLeft: 6 },
+
+  availableProviderCard: {
+    width: 200,
+    backgroundColor: T.card,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: T.border,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  availableProviderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  providerInitialsBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  providerInitials: {
+    color: '#4F46E5',
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  availableBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  availableDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+    marginRight: 4,
+  },
+  availableText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  providerName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: T.text,
+    marginBottom: 4,
+  },
+  providerCategory: {
+    fontSize: 13,
+    color: T.textSecondary,
+    fontWeight: '500',
+  },
+
+  catCard: {
+    width: 104,
+    backgroundColor: T.card,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: T.border,
+    alignItems: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  catIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  catLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: T.text,
+    textAlign: "center",
+  },
+
+  bizCard: {
+    width: 140,
+    backgroundColor: T.card,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: T.border,
+    alignItems: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  bizIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  bizName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: T.text,
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  bizCat: {
+    fontSize: 11,
+    color: "#16A34A",
+    fontWeight: "700",
+    textAlign: "center",
+  },
 
   onboardingCard: {
     backgroundColor: T.card,
-    borderRadius: 16,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: T.border,
-    padding: 24,
+    padding: 32,
     alignItems: "center",
     marginTop: 8,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.03,
+    shadowRadius: 16,
+    elevation: 2,
   },
   onboardingIconBg: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#FEF2F2",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#F0FDFA",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   onboardingTitle: {
     color: T.text,
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "900",
     textAlign: "center",
     marginBottom: 8,
   },
   onboardingDesc: {
     color: T.textSecondary,
-    fontSize: 14,
+    fontSize: 15,
     textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 20,
+    lineHeight: 22,
+    marginBottom: 24,
   },
   onboardingPrimaryBtn: {
     backgroundColor: T.primary,
-    height: 44,
-    borderRadius: 10,
-    paddingHorizontal: 32,
+    height: 48,
+    borderRadius: 100,
+    paddingHorizontal: 40,
     alignItems: "center",
     justifyContent: "center",
   },
   onboardingPrimaryBtnText: {
     color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 15,
+    fontWeight: "800",
   },
 
   stateBox: {
-    borderRadius: 16,
+    borderRadius: 24,
     backgroundColor: T.card,
     borderWidth: 1,
     borderColor: T.border,
-    paddingVertical: 36,
+    paddingVertical: 40,
     paddingHorizontal: 24,
     alignItems: "center",
   },
   stateTitle: {
     color: T.text,
-    fontSize: 17,
-    fontWeight: "700",
-    marginTop: 14,
-    marginBottom: 6,
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 16,
+    marginBottom: 8,
   },
   stateSub: {
     color: T.textSecondary,
-    fontSize: 13,
+    fontSize: 14,
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 22,
   },
   stateBtn: {
-    marginTop: 18,
+    marginTop: 24,
     backgroundColor: T.text,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
     borderRadius: 100,
   },
-  stateBtnTxt: { color: "#FFF", fontSize: 13, fontWeight: "800" },
+  stateBtnTxt: { color: "#FFF", fontSize: 14, fontWeight: "800" },
 
   sheetBg: {
     flex: 1,
-    backgroundColor: "rgba(17, 24, 39, 0.4)",
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
     justifyContent: "flex-end",
   },
   sheet: {
     backgroundColor: T.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     paddingTop: 12,
-    paddingHorizontal: PX,
+    paddingHorizontal: 24,
     paddingBottom: 40,
-    borderWidth: 1,
-    borderColor: T.border,
   },
   sheetPill: {
-    width: 36,
-    height: 4,
-    backgroundColor: T.border,
-    borderRadius: 2,
+    width: 40,
+    height: 5,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 3,
     alignSelf: "center",
-    marginBottom: 20,
+    marginBottom: 24,
   },
   sheetTitle: {
     color: T.text,
-    fontSize: 19,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "900",
     marginBottom: 16,
   },
   sheetRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    paddingVertical: 14,
+    gap: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: T.border,
   },
   sheetIco: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: T.bg,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
   },
-  sheetRowT: { color: T.text, fontSize: 15, fontWeight: "700" },
-  sheetRowS: { color: T.textSecondary, fontSize: 12, marginTop: 2 },
+  sheetRowT: { color: T.text, fontSize: 16, fontWeight: "800" },
+  sheetRowS: { color: T.textSecondary, fontSize: 13, marginTop: 4 },
 
   neighOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
     justifyContent: "flex-end",
   },
   neighSheet: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: T.card,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     paddingTop: 12,
     paddingHorizontal: 24,
     paddingBottom: 40,
-    borderTopWidth: 1,
-    borderColor: "#E5E7EB",
   },
   neighHandle: {
     width: 40,
-    height: 4,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 2,
+    height: 5,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 3,
     alignSelf: "center",
     marginBottom: 24,
   },
   neighIconWrap: { alignItems: "center", marginBottom: 16 },
   neighIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#FEE2E2",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#EEF2FF",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 4,
-    borderColor: "#FECACA",
+    marginBottom: 8,
   },
   neighModalLabel: {
-    color: "#9CA3AF",
-    fontSize: 10,
+    color: T.textSecondary,
+    fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.5,
+    textTransform: "uppercase",
     textAlign: "center",
     marginBottom: 8,
   },
@@ -1240,71 +1807,4 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   neighDismissText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
-
-  // Marketplace Banner
-  marketplaceBanner: {
-    backgroundColor: "#EEF2FF",
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: PX,
-    borderWidth: 1,
-    borderColor: "#E0E7FF",
-  },
-  marketIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#4F46E5",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-    shadowColor: "#4F46E5",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  marketTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#312E81",
-    marginBottom: 2,
-    letterSpacing: -0.3,
-  },
-  marketSub: {
-    fontSize: 12,
-    color: "#4F46E5",
-    fontWeight: "500",
-    lineHeight: 16,
-  },
-  marketAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 100,
-  },
-  marketActionText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#4F46E5",
-    marginRight: 4,
-  },
-  
-  featuredCard: { width: 156, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center" },
-  featuredBadge: { position: "absolute", top: -10, backgroundColor: "#F59E0B", flexDirection: "row", alignItems: "center", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, zIndex: 1 },
-  featuredBadgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "700" },
-  featuredIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center", marginBottom: 8, marginTop: 4 },
-  featuredName: { fontSize: 13, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 2 },
-  featuredCat: { fontSize: 11, color: "#6B7280", textAlign: "center" },
-
-  bizCard: { width: 156, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center" },
-  bizIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#EEF2FF", alignItems: "center", justifyContent: "center", marginBottom: 8 },
-  bizName: { fontSize: 13, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 2 },
-  bizCat: { fontSize: 11, color: "#6B7280", textAlign: "center", marginBottom: 6 },
-  bizVerified: { flexDirection: "row", alignItems: "center", backgroundColor: "#ECFDF5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  bizVerifiedText: { fontSize: 10, color: "#10B981", fontWeight: "600", marginLeft: 2 },
 });

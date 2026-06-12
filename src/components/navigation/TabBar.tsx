@@ -17,6 +17,8 @@ import Animated, {
     withSequence,
     withTiming,
 } from "react-native-reanimated";
+import { useUnreadChats } from "@/hooks/useUnreadChats";
+import Badge from "@/components/common/Badge";
 
 const T = {
   card: "#FFFFFF", // Clean white
@@ -30,6 +32,7 @@ const T = {
 export default function TabBar({ state, descriptors, navigation }: any) {
   const router = useRouter();
   const { t } = useTranslation();
+  const unreadChatsCount = useUnreadChats();
 
   const pulseScale = useSharedValue(1);
 
@@ -110,11 +113,16 @@ export default function TabBar({ state, descriptors, navigation }: any) {
 
           return (
             <Pressable key={route.key} onPress={onPress} style={styles.tabItem}>
-              <Ionicons
-                name={iconName}
-                size={22}
-                color={isFocused ? T.primary : T.textSecondary}
-              />
+              <View>
+                <Ionicons
+                  name={iconName}
+                  size={22}
+                  color={isFocused ? T.primary : T.textSecondary}
+                />
+                {route.name === "chats" && (
+                  <Badge count={unreadChatsCount} maxCount={99} />
+                )}
+              </View>
               <Text
                 style={[
                   styles.tabLabel,

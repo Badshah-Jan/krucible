@@ -1,5 +1,6 @@
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import {
   addDoc,
   arrayRemove,
@@ -119,7 +120,8 @@ class NotificationService {
         console.warn("Push notification permission not granted");
         return null;
       }
-      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId || "428246d2-a8b5-4eba-88d5-60494895aadc";
+      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
       token = tokenData.data;
       console.log("[NotificationService] Token generated:", token);
     } else {

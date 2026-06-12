@@ -90,7 +90,7 @@ export default function SupportScreen() {
     },
     {
       q: 'What is Karma and how do I earn it?',
-      a: 'Karma points are earned by helping neighbors, responding to SOS alerts, and being an active community member. View your achievements in Profile > Karma.',
+      a: 'Karma points are earned by helping neighbors, responding to SOS alerts, and being an active community member. View your Karma Dashboard in Profile > Karma.',
     },
     {
       q: 'How do I delete my account?',

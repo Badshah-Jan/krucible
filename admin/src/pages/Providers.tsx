@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Briefcase, CheckCircle, XCircle, Star, Trash2 } from 'lucide-react';
+import { Briefcase, Star, Trash2 } from 'lucide-react';
+import type { QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
 interface Provider {
   id: string;
@@ -20,8 +22,8 @@ export default function Providers() {
 
   useEffect(() => {
     const q = query(collection(db, "services"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Provider));
+    const unsub = onSnapshot(q, (snap: QuerySnapshot<DocumentData>) => {
+      const list = mapQuerySnapshot<Provider>(snap, withDocId);
       setProviders(list);
       setLoading(false);
     });
