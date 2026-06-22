@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Platform, StatusBar } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, TextInput, StatusBar } from 'react-native';
+import { Colors } from '@/constants/colors';
+
+const T = {
+  bg: '#FFFFFF',
+  primary: Colors.primary,
+  text: '#111111',
+  textSecondary: '#6B7280',
+  inputBg: '#F3F4F6',
+  separator: '#E5E7EB',
+};
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,8 +17,6 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 import Text from '@/components/common/Text';
-import Input from '@/components/common/Input';
-import Button from '@/components/common/Button';
 import { AuthService } from '@/services/authService';
 
 export default function ForgotPasswordScreen() {
@@ -48,7 +56,7 @@ export default function ForgotPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <KeyboardAwareScrollView 
         contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false} 
@@ -58,7 +66,7 @@ export default function ForgotPasswordScreen() {
       >
           <Animated.View entering={FadeIn.duration(500)} style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+              <Ionicons name="arrow-back" size={24} color={T.text} />
             </TouchableOpacity>
             <View style={styles.titleBox}>
               <Text variant="h2" style={styles.titleText}>Reset Password</Text>
@@ -70,21 +78,26 @@ export default function ForgotPasswordScreen() {
             {errorMsg ? <Text variant="body" style={styles.errorText}>{errorMsg}</Text> : null}
             {message ? <Text variant="body" style={styles.successText}>{message}</Text> : null}
 
-            <Input
-              label="Email"
-              placeholder="Enter your email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
-            />
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Enter your email"
+                placeholderTextColor={T.textSecondary}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+              />
+            </View>
 
-            <Button
-              title={isSending ? "Sending..." : "Send Reset Link"}
+            <TouchableOpacity
+              style={[styles.primaryBtn, isSending && { opacity: 0.7 }]}
               onPress={handleSendReset}
               disabled={isSending}
-              style={styles.sendBtn}
-            />
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryBtnText}>{isSending ? "Sending..." : "Send Reset Link"}</Text>
+            </TouchableOpacity>
           </Animated.View>
       </KeyboardAwareScrollView>
     </SafeAreaView>
@@ -94,7 +107,7 @@ export default function ForgotPasswordScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: T.bg,
   },
   scrollContent: {
     flexGrow: 1,
@@ -109,7 +122,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#F7F7F7',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -118,19 +131,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   titleText: {
-    color: '#FFFFFF',
+    color: T.text,
     fontSize: 32,
     fontWeight: '800',
   },
   subtitleText: {
-    color: '#A1A1AA',
-    fontSize: 16,
+    color: T.text,
+    fontSize: 18,
+    fontWeight: '600',
   },
   formContainer: {
     paddingBottom: 20,
   },
   errorText: {
-    color: '#EF4444',
+    color: T.primary,
     textAlign: 'center',
     marginBottom: 16,
   },
@@ -139,8 +153,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
-  sendBtn: {
-    width: '100%',
-    marginTop: 8,
+  inputContainer: {
+    backgroundColor: T.inputBg,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 24,
+  },
+  textInput: {
+    fontSize: 16,
+    color: T.text,
+    padding: 0,
+    margin: 0,
+  },
+  primaryBtn: {
+    backgroundColor: T.primary,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  primaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

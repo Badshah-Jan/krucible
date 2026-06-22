@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -40,21 +40,21 @@ export default function AboutScreen() {
 
         {/* Links */}
         <View style={styles.linksCard}>
-          <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://example.com/terms')}>
+          <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/legal/terms-of-service' as any)}>
             <Ionicons name="document-text-outline" size={20} color="#4F46E5" />
             <Text style={styles.linkText}>Terms of Service</Text>
             <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: "auto" }} />
           </TouchableOpacity>
           <View style={styles.divider} />
           
-          <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://example.com/privacy')}>
+          <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/legal/privacy-policy' as any)}>
             <Ionicons name="shield-checkmark-outline" size={20} color="#10B981" />
             <Text style={styles.linkText}>Privacy Policy</Text>
             <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: "auto" }} />
           </TouchableOpacity>
           <View style={styles.divider} />
 
-          <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://example.com/guidelines')}>
+          <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/support/guidelines' as any)}>
             <Ionicons name="people-outline" size={20} color="#8B5CF6" />
             <Text style={styles.linkText}>Community Guidelines</Text>
             <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: "auto" }} />

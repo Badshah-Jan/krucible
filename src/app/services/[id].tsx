@@ -5,10 +5,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from "expo-linear-gradient";
 import Text from '@/components/common/Text';
+import SafetyBanner from '@/components/safety/SafetyBanner';
+import ReportModal from '@/components/safety/ReportModal';
 import ProviderService, { ServiceProvider, ServiceReview } from '@/services/providerService';
 import { AuthService } from '@/services/authService';
 import { UserService } from '@/services/userService';
 import { ChatService } from '@/services/chatService';
+import { Colors } from '@/constants/colors';
 
 export default function ServiceDetailScreen() {
   const router = useRouter();
@@ -17,6 +20,7 @@ export default function ServiceDetailScreen() {
   const [provider, setProvider] = useState<ServiceProvider | null>(null);
   const [reviews, setReviews] = useState<ServiceReview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -84,7 +88,7 @@ export default function ServiceDetailScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#EF4444" />
+        <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
@@ -111,6 +115,11 @@ export default function ServiceDetailScreen() {
             <Ionicons name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
+          {provider.userId !== AuthService.getCurrentUser()?.uid && (
+            <TouchableOpacity onPress={() => setShowReport(true)} style={styles.circleBtn}>
+              <Ionicons name="flag-outline" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
@@ -174,15 +183,19 @@ export default function ServiceDetailScreen() {
 
           <View style={{ paddingHorizontal: 16 }}>
             <View style={[styles.availBadge, !provider.isAvailable && { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
-              <View style={[styles.availDot, !provider.isAvailable && { backgroundColor: '#EF4444' }]} />
-              <Text style={[styles.availText, !provider.isAvailable && { color: '#DC2626' }]}>
+              <View style={[styles.availDot, !provider.isAvailable && { backgroundColor: Colors.primary }]} />
+              <Text style={[styles.availText, !provider.isAvailable && { color: Colors.primaryMid }]}>
                 {provider.isAvailable ? 'Available Now' : 'Currently Unavailable'}
               </Text>
             </View>
 
+            <View style={[styles.card, { paddingHorizontal: 14, paddingVertical: 12 }]}>
+              <SafetyBanner type="marketplace" />
+            </View>
+
             <View style={styles.card}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                <Ionicons name="person" size={20} color="#EF4444" style={{ marginRight: 8 }} />
+                <Ionicons name="person" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
                 <Text style={styles.sectionTitle}>About</Text>
               </View>
               <Text style={styles.aboutText}>{provider.about}</Text>
@@ -213,7 +226,7 @@ export default function ServiceDetailScreen() {
                   <Text style={styles.sectionTitle}>Reviews</Text>
                 </View>
                 <TouchableOpacity onPress={() => router.push(`/services/review?serviceId=${provider.id}` as any)}>
-                  <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 13 }}>Write Review</Text>
+                  <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 13 }}>Write Review</Text>
                 </TouchableOpacity>
               </View>
 
@@ -237,6 +250,9 @@ export default function ServiceDetailScreen() {
                 ))
               )}
             </View>
+
+            {/* Legal Disclaimer */}
+            <SafetyBanner type="legal" />
           </View>
         </ScrollView>
 
@@ -246,16 +262,24 @@ export default function ServiceDetailScreen() {
             <Ionicons name="logo-whatsapp" size={24} color="#059669" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtnOutline} onPress={handleCall}>
-            <Ionicons name="call" size={24} color="#EF4444" />
+            <Ionicons name="call" size={24} color={Colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity activeOpacity={0.8} style={{ flex: 1 }} onPress={handleChat}>
-             <LinearGradient colors={["#EF4444", "#DC2626"]} style={styles.actionBtnSolid} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+             <LinearGradient colors={[Colors.primary, Colors.primaryMid]} style={styles.actionBtnSolid} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
               <Ionicons name="chatbubbles" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 16 }}>Message</Text>
              </LinearGradient>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <ReportModal
+        visible={showReport}
+        targetId={provider?.id || ''}
+        targetType="service"
+        targetOwnerId={provider?.userId}
+        onClose={() => setShowReport(false)}
+      />
     </View>
   );
 }
@@ -264,7 +288,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#F8F9FA" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#F8F9FA" },
   errorText: { fontSize: 16, color: "#6B7280", marginBottom: 16 },
-  backBtn: { padding: 12, backgroundColor: "#EF4444", borderRadius: 8 },
+  backBtn: { padding: 12, backgroundColor: Colors.primary, borderRadius: 8 },
   backText: { color: "#FFFFFF", fontWeight: "600" },
   header: { flexDirection: "row", paddingHorizontal: 16, paddingTop: 16 },
   circleBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#E5E7EB" },
@@ -274,7 +298,7 @@ const styles = StyleSheet.create({
   badge: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100 },
   badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
   name: { fontSize: 32, fontWeight: "800", color: "#111827", marginBottom: 4 },
-  category: { fontSize: 16, color: "#EF4444", fontWeight: "600" },
+  category: { fontSize: 16, color: Colors.primary, fontWeight: "600" },
   
   statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 100, alignSelf: 'flex-start', borderWidth: 1 },
   statItem: { flexDirection: 'row', alignItems: 'center' },
@@ -293,7 +317,7 @@ const styles = StyleSheet.create({
   
   footer: { flexDirection: 'row', padding: 20, paddingBottom: 30, borderTopWidth: 1, borderTopColor: '#E5E7EB', backgroundColor: '#FFFFFF', gap: 12 },
   actionBtnOutline: { width: 56, height: 56, borderRadius: 28, borderWidth: 1, borderColor: '#FCA5A5', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2' },
-  actionBtnSolid: { height: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: "#EF4444", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  actionBtnSolid: { height: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   
   upgradeBox: { flexDirection: "row", padding: 20, borderRadius: 20, marginTop: 8, marginBottom: 16, borderWidth: 1, borderColor: "#FDE68A" },
   upgradeIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },

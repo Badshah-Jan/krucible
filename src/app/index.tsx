@@ -17,7 +17,7 @@ export default function Index() {
   const router = useRouter();
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   const authInitialized = useAppStore((state) => state.authInitialized);
-  const community = useAppStore((state) => state.community);
+  const community = useAppStore((state) => state.primaryCommunity);
   const locationStatus = useAppStore((state) => state.locationStatus);
   const isGpsDisabled = useAppStore((state) => state.isGpsDisabled);
 
@@ -46,7 +46,7 @@ export default function Index() {
       }
 
       // Step 1: Check location permission
-      if (!community && locationStatus !== 'granted') {
+      if (locationStatus !== 'granted') {
         router.replace('/(auth)/location-permission');
         return;
       }
@@ -54,6 +54,12 @@ export default function Index() {
       // Step 2: Permission granted but GPS is disabled
       if (isGpsDisabled) {
         router.replace('/(auth)/gps-enable');
+        return;
+      }
+
+      // Step 3: Permission and GPS are fine but no primary community confirmed yet
+      if (!community) {
+        router.replace('/(auth)/community-setup');
         return;
       }
 

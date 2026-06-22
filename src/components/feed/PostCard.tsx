@@ -1,58 +1,21 @@
-import { getCategoryTheme } from "@/constants/categories";
 import { AuthService } from "@/services/authService";
 import { Post as FirestorePost, PostService } from "@/services/postService";
 import { UserService } from "@/services/userService";
+import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
-import { useTranslation } from "react-i18next";
-import {
-    Alert,
-    Modal,
-    Pressable,
-    Share,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from "react-native";
 import { Image } from "expo-image";
-
-// ─── Design Tokens ────────────────────────────────────────────────────────────
-const T = {
-  bg: "#F8F9FA", // Clean light background
-  card: "#FFFFFF", // White cards
-  cardElevated: "#F9FAFB", // Subtle hover
-  primary: "#EF4444", // Coral/Red primary
-  text: "#111827", // Slate 900
-  textSecondary: "#6B7280", // Gray 500
-  border: "#E5E7EB", // Slate 200
-  danger: "#DC2626", // Red
-};
-
-const getInitials = (name: string) => {
-  if (!name) return "N";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-};
-
-const getAvatarBg = (name: string) => {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  // Rich professional color tones matching the mockup
-  const colors = [
-    "#C2410C",
-    "#166534",
-    "#1D4ED8",
-    "#B45309",
-    "#6D28D9",
-    "#BE185D",
-  ];
-  return colors[Math.abs(hash) % colors.length];
-};
+import React from "react";
+import {
+  Alert,
+  Modal,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface PostCardProps {
   post: FirestorePost | any;
@@ -61,56 +24,56 @@ interface PostCardProps {
   onCommentPress?: () => void;
 }
 
+// Category config — color + emoji
+const CATEGORY_CONFIG: Record<string, { color: string; bg: string; emoji: string; label: string }> = {
+  emergency: { color: Colors.danger, bg: Colors.dangerLight, emoji: "🚨", label: "Emergency" },
+  help:       { color: "#D97706", bg: "#FEF3C7", emoji: "🤝", label: "Help" },
+  lost_found: { color: "#2563EB", bg: "#EFF6FF", emoji: "🔍", label: "Lost & Found" },
+  "lost & found": { color: "#2563EB", bg: "#EFF6FF", emoji: "🔍", label: "Lost & Found" },
+  recommendations: { color: Colors.primary, bg: Colors.primaryLight, emoji: "⭐", label: "Recommend" },
+  services:   { color: "#7C3AED", bg: "#F5F3FF", emoji: "🔧", label: "Services" },
+  general:    { color: Colors.textSecondary, bg: Colors.surface, emoji: "💬", label: "General" },
+};
+
+function getCatConfig(cat: string) {
+  const key = cat?.toLowerCase();
+  return (
+    CATEGORY_CONFIG[key] ||
+    CATEGORY_CONFIG["general"]
+  );
+}
+
 const PostCard = ({
   post,
   onPress,
   onLikePress,
   onCommentPress,
 }: PostCardProps) => {
-  const { t } = useTranslation();
   const [isEditing, setIsEditing] = React.useState(false);
   const [isOptionsVisible, setIsOptionsVisible] = React.useState(false);
-  const [editTitle, setEditTitle] = React.useState(post.title);
-  const [editDescription, setEditDescription] = React.useState(
-    post.description,
-  );
+  const [editTitle, setEditTitle] = React.useState(post.title || "");
+  const [editDescription, setEditDescription] = React.useState(post.description || "");
 
-  // Fresh user state to fix avatar/name staleness
   const [authorAvatar, setAuthorAvatar] = React.useState(post.userAvatar);
   const [authorName, setAuthorName] = React.useState(post.userName);
 
   React.useEffect(() => {
-    // If the snapshot prop updates (e.g. from our fan-out batch script), sync local state instantly
     if (post.userAvatar) setAuthorAvatar(post.userAvatar);
     if (post.userName) setAuthorName(post.userName);
-
-    // Fallback: check if there's an even newer version directly on the user document
     if (post.userId) {
       UserService.getUser(post.userId)
         .then((u) => {
-          if (u) {
-            if (u.photoURL) setAuthorAvatar(u.photoURL);
-            if (u.name) setAuthorName(u.name);
-          }
+          if (u?.photoURL) setAuthorAvatar(u.photoURL);
+          if (u?.name) setAuthorName(u.name);
         })
-        .catch((error) => {
-          console.warn("[PostCard] Could not refresh author profile:", error);
-        });
+        .catch(() => {});
     }
   }, [post.userId, post.userAvatar, post.userName]);
 
   const currentUser = AuthService.getCurrentUser();
   const isOwner = currentUser?.uid === post.userId;
-  const isEmergency = String(post.category).toLowerCase() === "emergency";
-
-  // Meta: distance · area · time
-  const displayMeta = [
-    post.distance,
-    post.area || post.district,
-    post.timePosted || "Just now",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const catConfig = getCatConfig(post.category);
+  const isEmergency = post.category?.toLowerCase() === "emergency" || post.isSos;
 
   const handleUpdate = async () => {
     if (!editTitle.trim() || !editDescription.trim()) return;
@@ -120,531 +83,416 @@ const PostCard = ({
         description: editDescription,
       });
       setIsEditing(false);
-    } catch (e) {
+    } catch {
       Alert.alert("Error", "Failed to update post");
     }
   };
 
-  const catTheme = getCategoryTheme(post.category ?? "");
-  const initials = getInitials(authorName || "Neighbor");
-  const avatarColor = getAvatarBg(authorName || "Neighbor");
-  const hasAvatarUrl =
-    authorAvatar &&
-    (authorAvatar.startsWith("http://") || authorAvatar.startsWith("https://"));
+  const avatarUri =
+    authorAvatar ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName || "N")}&background=E8F5F0&color=1A6B4A&bold=true&size=80`;
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={onPress}
-      style={[styles.container]}
-    >
-      {/* Header: User Info + Category Badge */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          {hasAvatarUrl ? (
-            <Image 
-              source={{ uri: authorAvatar }} 
-              style={styles.avatar} 
+    <View style={[styles.card, isEmergency && styles.cardEmergency]}>
+      {isEmergency && <View style={styles.emergencyBar} />}
+
+      <TouchableOpacity activeOpacity={0.95} onPress={onPress}>
+        {/* ── Header ── */}
+        <View style={styles.header}>
+          <Image
+            source={{ uri: avatarUri }}
+            style={styles.avatar}
+            contentFit="cover"
+            transition={200}
+          />
+          <View style={styles.headerMeta}>
+            <Text style={styles.authorName} numberOfLines={1}>
+              {authorName || "Neighbour"}
+            </Text>
+            <Text style={styles.metaLine} numberOfLines={1}>
+              {[post.distance, post.timePosted || "Just now"].filter(Boolean).join(" · ")}
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <View style={[styles.catBadge, { backgroundColor: catConfig.bg }]}>
+              <Text style={[styles.catText, { color: catConfig.color }]}>
+                {catConfig.emoji} {catConfig.label}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsOptionsVisible(true)}
+              hitSlop={12}
+              style={styles.moreBtn}
+            >
+              <Ionicons name="ellipsis-horizontal" size={16} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── Content ── */}
+        <View style={styles.body}>
+          {!!post.imageUrl && (
+            <Image
+              source={{ uri: post.imageUrl }}
+              style={styles.image}
               contentFit="cover"
-              cachePolicy="memory-disk"
               transition={200}
             />
-          ) : (
-            <View
-              style={[styles.avatarInitials, { backgroundColor: avatarColor }]}
-            >
-              <Text style={styles.avatarInitialsText}>{initials}</Text>
-            </View>
           )}
-
-          <View style={{ marginLeft: 10 }}>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-            >
-              <Text style={styles.userName}>{authorName || "Neighbor"}</Text>
-              <Pressable
-                onPress={() => setIsOptionsVisible(true)}
-                hitSlop={10}
-                style={{ marginLeft: 2 }}
-              >
-                <Ionicons
-                  name="ellipsis-horizontal"
-                  size={14}
-                  color={T.textSecondary}
-                />
-              </Pressable>
-            </View>
-            <Text style={styles.metaText}>{displayMeta}</Text>
-          </View>
-        </View>
-
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          {post.sponsored && (
-            <View style={[styles.categoryPill, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
-              <Text style={[styles.categoryText, { color: '#D97706' }]}>Sponsored</Text>
-            </View>
+          {!!post.title && (
+            <Text style={styles.title} numberOfLines={2}>{post.title}</Text>
           )}
-          <View
-            style={[
-              styles.categoryPill,
-              { backgroundColor: catTheme.bg, borderColor: catTheme.border },
-            ]}
-          >
-            <Text style={[styles.categoryText, { color: catTheme.color }]}>
-              {post.category}
-            </Text>
-          </View>
+          <Text style={styles.description} numberOfLines={3}>
+            {post.description}
+          </Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
-      {/* Content */}
-      <View style={styles.content}>
-        {!!post.title && <Text style={styles.title}>{post.title}</Text>}
-        <Text style={styles.description}>{post.description}</Text>
-      </View>
+      {/* ── Divider ── */}
+      <View style={styles.divider} />
 
-      {/* Footer Actions */}
-      <View style={styles.actionBar}>
-        <View style={{ flexDirection: "row", gap: 16 }}>
+      {/* ── Footer ── */}
+      <View style={styles.footer}>
+        <View style={styles.actions}>
           {!post.isSos && (
-            <Pressable
-              onPress={onLikePress}
-              hitSlop={12}
-              style={styles.actionBtn}
-            >
-              {/* Outline-only heart icon as shown in mockup */}
+            <TouchableOpacity style={styles.actionBtn} onPress={onLikePress} hitSlop={8}>
               <Ionicons
-                name="heart-outline"
-                size={18}
-                color={post.likedByMe ? T.primary : T.textSecondary}
+                name={post.likedByMe ? "heart" : "heart-outline"}
+                size={19}
+                color={post.likedByMe ? Colors.danger : Colors.textSecondary}
               />
-              <Text
-                style={[
-                  styles.actionText,
-                  post.likedByMe && { color: T.primary },
-                ]}
-              >
-                {post.likes > 0 ? post.likes : "0"}
-              </Text>
-            </Pressable>
+              {post.likes > 0 && (
+                <Text style={[styles.actionCount, post.likedByMe && { color: Colors.danger }]}>
+                  {post.likes}
+                </Text>
+              )}
+            </TouchableOpacity>
           )}
-
-          <Pressable
-            onPress={onCommentPress}
-            hitSlop={12}
+          <TouchableOpacity style={styles.actionBtn} onPress={onCommentPress} hitSlop={8}>
+            <Ionicons name="chatbubble-outline" size={18} color={Colors.textSecondary} />
+            {post.commentsCount > 0 && (
+              <Text style={styles.actionCount}>{post.commentsCount}</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.actionBtn}
+            onPress={() => Share.share({ message: post.title || post.description || "" })}
+            hitSlop={8}
           >
-            <Ionicons
-              name="chatbubble-outline"
-              size={16}
-              color={T.textSecondary}
-            />
-            <Text style={styles.actionText}>
-              {post.commentsCount > 0 ? post.commentsCount : "0"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={async () => {
-              try {
-                await Share.share({
-                  message: `Check out this post on Neighborly: ${post.title || post.description}`,
-                });
-              } catch (error: any) {
-                Alert.alert("Error", "Could not share post.");
-              }
-            }}
-            hitSlop={12}
-            style={styles.actionBtn}
-          >
-            <Ionicons
-              name="share-social-outline"
-              size={16}
-              color={T.textSecondary}
-            />
-          </Pressable>
+            <Ionicons name="arrow-redo-outline" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Action text right-aligned matching mockup: "✓ Offer help" for emergency */}
         {isEmergency && (
-          <TouchableOpacity style={styles.offerHelpBtn} onPress={onPress}>
-            <Ionicons
-              name="hand-left"
-              size={14}
-              color="#10B981"
-              style={{ marginRight: 4 }}
-            />
-            <Text style={styles.offerHelpText}>Offer help</Text>
+          <TouchableOpacity style={styles.respondBtn} onPress={onPress} activeOpacity={0.85}>
+            <Text style={styles.respondText}>Respond →</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Edit Modal */}
-      <Modal visible={isEditing} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t("edit_post", "Edit Post")}</Text>
-            <TextInput
-              value={editTitle}
-              onChangeText={setEditTitle}
-              placeholder="Post Title"
-              placeholderTextColor={T.textSecondary}
-              style={styles.modalInput}
-            />
-            <TextInput
-              value={editDescription}
-              onChangeText={setEditDescription}
-              placeholder="Post Description"
-              placeholderTextColor={T.textSecondary}
-              multiline
-              style={[
-                styles.modalInput,
-                { height: 100, textAlignVertical: "top" },
-              ]}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setIsEditing(false)}>
-                <Text style={styles.modalCancel}>{t("cancel", "Cancel")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleUpdate}
-                style={styles.modalSaveBtn}
-              >
-                <Text style={styles.modalSaveText}>{t("save", "Save")}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Options Menu Modal */}
+      {/* ── Options Sheet ── */}
       <Modal
         visible={isOptionsVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setIsOptionsVisible(false)}
       >
-        <Pressable
-          style={styles.sheetOverlay}
-          onPress={() => setIsOptionsVisible(false)}
-        >
-          <Pressable
-            style={styles.sheetContent}
-            onPress={(e) => e.stopPropagation()}
-          >
+        <Pressable style={styles.sheetOverlay} onPress={() => setIsOptionsVisible(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>
-              {t("post_options", "Post Options")}
-            </Text>
-
+            <Text style={styles.sheetTitle}>Post Options</Text>
             {isOwner ? (
               <>
                 <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setIsOptionsVisible(false);
-                    setIsEditing(true);
-                  }}
-                  style={styles.sheetActionBtn}
+                  onPress={() => { setIsOptionsVisible(false); setIsEditing(true); }}
+                  style={styles.sheetRow}
                 >
-                  <Ionicons name="pencil" size={20} color={T.text} />
-                  <Text style={styles.sheetActionText}>
-                    {t("edit_post", "Edit Post")}
-                  </Text>
+                  <View style={styles.sheetIconWrap}>
+                    <Ionicons name="pencil-outline" size={18} color={Colors.text} />
+                  </View>
+                  <Text style={styles.sheetRowText}>Edit Post</Text>
                 </TouchableOpacity>
-
                 <TouchableOpacity
-                  activeOpacity={0.7}
                   onPress={() => {
                     setIsOptionsVisible(false);
-                    Alert.alert(
-                      "Delete Post",
-                      "Are you sure you want to delete this post?",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Delete",
-                          style: "destructive",
-                          onPress: () => PostService.deletePost(post.id),
-                        },
-                      ],
-                    );
+                    Alert.alert("Delete Post", "This cannot be undone.", [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Delete", style: "destructive", onPress: () => PostService.deletePost(post.id) },
+                    ]);
                   }}
-                  style={[styles.sheetActionBtn, { borderBottomWidth: 0 }]}
+                  style={[styles.sheetRow, { borderBottomWidth: 0 }]}
                 >
-                  <Ionicons name="trash" size={20} color={T.danger} />
-                  <Text style={[styles.sheetActionText, { color: T.danger }]}>
-                    {t("delete_post", "Delete Post")}
-                  </Text>
+                  <View style={[styles.sheetIconWrap, { backgroundColor: Colors.dangerLight }]}>
+                    <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+                  </View>
+                  <Text style={[styles.sheetRowText, { color: Colors.danger }]}>Delete Post</Text>
                 </TouchableOpacity>
               </>
             ) : (
-              <>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setIsOptionsVisible(false);
-                    Alert.alert(
-                      "Report Post",
-                      "Are you sure you want to report this post to the moderators?",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Report",
-                          style: "destructive",
-                          onPress: () => {
-                            // In a real app we would call PostService.reportPost(post.id)
-                            Alert.alert(
-                              "Reported",
-                              "Thank you. This post has been reported for review by our moderators.",
-                            );
-                          },
-                        },
-                      ],
-                    );
-                  }}
-                  style={styles.sheetActionBtn}
-                >
-                  <Ionicons name="flag-outline" size={20} color={T.danger} />
-                  <Text style={[styles.sheetActionText, { color: T.danger }]}>
-                    {t("report_post", "Report Post")}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setIsOptionsVisible(false);
-                    Alert.alert("Share", "Sharing link copied to clipboard!");
-                  }}
-                  style={[styles.sheetActionBtn, { borderBottomWidth: 0 }]}
-                >
-                  <Ionicons
-                    name="share-social-outline"
-                    size={20}
-                    color={T.text}
-                  />
-                  <Text style={styles.sheetActionText}>
-                    {t("share_post", "Share Post")}
-                  </Text>
-                </TouchableOpacity>
-              </>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsOptionsVisible(false);
+                  Alert.alert("Reported", "Thank you for keeping the community safe.");
+                }}
+                style={[styles.sheetRow, { borderBottomWidth: 0 }]}
+              >
+                <View style={[styles.sheetIconWrap, { backgroundColor: Colors.dangerLight }]}>
+                  <Ionicons name="flag-outline" size={18} color={Colors.danger} />
+                </View>
+                <Text style={[styles.sheetRowText, { color: Colors.danger }]}>Report Post</Text>
+              </TouchableOpacity>
             )}
           </Pressable>
         </Pressable>
       </Modal>
-    </TouchableOpacity>
+
+      {/* ── Edit Modal ── */}
+      <Modal visible={isEditing} transparent animationType="fade">
+        <View style={styles.editOverlay}>
+          <View style={styles.editCard}>
+            <Text style={styles.editTitle}>Edit Post</Text>
+            <TextInput
+              value={editTitle}
+              onChangeText={setEditTitle}
+              style={styles.editInput}
+              placeholder="Title"
+              placeholderTextColor={Colors.textTertiary}
+            />
+            <TextInput
+              value={editDescription}
+              onChangeText={setEditDescription}
+              style={[styles.editInput, { height: 100, textAlignVertical: "top" }]}
+              placeholder="Description"
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+            />
+            <View style={styles.editActions}>
+              <TouchableOpacity onPress={() => setIsEditing(false)} style={styles.editCancelBtn}>
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleUpdate} style={styles.editSaveBtn}>
+                <Text style={styles.editSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: T.card,
-    borderRadius: 20,
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#E5E7EB", // Slate 200 light border
-    padding: 16,
-    marginBottom: 12,
+    borderColor: Colors.border,
+    overflow: "hidden",
   },
+  cardEmergency: {
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.danger,
+  },
+  emergencyBar: {
+    height: 0,
+    width: 0,
+  },
+
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 8,
   },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: T.border,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    flexShrink: 0,
   },
-  avatarInitials: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarInitialsText: {
-    color: "#FFFFFF",
+  headerMeta: { flex: 1 },
+  authorName: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
+    color: Colors.text,
   },
-  userName: {
-    color: T.text,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  metaText: {
-    color: T.textSecondary,
+  metaLine: {
     fontSize: 11,
-    marginTop: 2,
+    color: Colors.textSecondary,
+    marginTop: 1,
+    fontWeight: "400",
   },
-  categoryPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 100,
-    borderWidth: 1,
-  },
-  categoryText: {
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  content: {
-    marginBottom: 14,
-  },
-  title: {
-    color: "#111827",
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 4,
-    lineHeight: 20,
-  },
-  description: {
-    color: "#374151", // Soft dark gray
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "500",
-  },
-  actionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6", // Thin separation line
-    paddingTop: 12,
-  },
-  actionBtn: {
+  headerRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flexShrink: 0,
   },
-  actionText: {
-    color: T.textSecondary,
-    fontSize: 12,
+  catBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  catText: {
+    fontSize: 9,
     fontWeight: "600",
   },
-  offerHelpBtn: {
+  moreBtn: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+  },
+
+  body: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  image: {
+    width: "100%",
+    height: 180,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: Colors.surface,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.text,
+    marginBottom: 4,
+    lineHeight: 19,
+  },
+  description: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    fontWeight: "400",
+  },
+
+  divider: { height: 1, backgroundColor: Colors.border, marginHorizontal: 12 },
+
+  footer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ECFDF5",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  actions: { flexDirection: "row", alignItems: "center", gap: 16 },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  actionCount: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: Colors.textSecondary,
+  },
+  respondBtn: {
+    backgroundColor: Colors.danger,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: "#10B981",
+    borderRadius: 8,
   },
-  offerHelpText: {
-    color: "#10B981",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(17, 24, 39, 0.4)",
-    justifyContent: "center",
-    padding: 24,
-  },
-  modalContent: {
-    backgroundColor: T.card,
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: T.border,
-    gap: 16,
-  },
-  modalTitle: {
-    color: T.text,
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  modalInput: {
-    backgroundColor: T.bg,
-    color: T.text,
-    padding: 16,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: T.border,
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: 16,
-    marginTop: 8,
-  },
-  modalCancel: {
-    color: T.textSecondary,
-    fontWeight: "600",
-  },
-  modalSaveBtn: {
-    backgroundColor: T.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 100,
-  },
-  modalSaveText: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-  },
+  respondText: { color: "#FFFFFF", fontSize: 11, fontWeight: "600" },
+
+  // Bottom Sheet
   sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(17, 24, 39, 0.4)",
+    backgroundColor: "rgba(0,0,0,0.35)",
     justifyContent: "flex-end",
   },
-  sheetContent: {
-    backgroundColor: T.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 12,
+  sheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 10,
     paddingBottom: 40,
-    borderWidth: 1,
-    borderColor: T.border,
   },
   sheetHandle: {
-    width: 40,
+    width: 36,
     height: 4,
-    backgroundColor: T.border,
     borderRadius: 2,
+    backgroundColor: Colors.border,
     alignSelf: "center",
-    marginBottom: 20,
+    marginBottom: 18,
   },
   sheetTitle: {
-    color: T.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
-    marginBottom: 16,
+    color: Colors.text,
+    marginBottom: 14,
+    letterSpacing: -0.3,
   },
-  sheetActionBtn: {
+  sheetRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
-    paddingVertical: 14,
+    paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: T.border,
+    borderBottomColor: Colors.divider,
+    gap: 12,
   },
-  sheetActionText: {
-    color: T.text,
-    fontSize: 15,
-    fontWeight: "700",
+  sheetIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: Colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  sheetRowText: { fontSize: 15, fontWeight: "600", color: Colors.text },
+
+  // Edit Modal
+  editOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  editCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 22,
+  },
+  editTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: Colors.text,
+    marginBottom: 16,
+  },
+  editInput: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: Colors.text,
+    marginBottom: 12,
+    fontWeight: "500",
+  },
+  editActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 },
+  editCancelBtn: { paddingVertical: 9, paddingHorizontal: 14 },
+  editCancelText: { fontSize: 14, fontWeight: "600", color: Colors.textSecondary },
+  editSaveBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+  },
+  editSaveText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
 });
 
 export default React.memo(PostCard, (prev, next) => {
-  // Deep comparison of essential properties to prevent unnecessary re-renders
   if (prev.post.id !== next.post.id) return false;
   if (prev.post.likes !== next.post.likes) return false;
   if (prev.post.commentsCount !== next.post.commentsCount) return false;
   if (prev.post.likedByMe !== next.post.likedByMe) return false;
   if (prev.post.title !== next.post.title) return false;
   if (prev.post.description !== next.post.description) return false;
-  if (prev.post.userAvatar !== next.post.userAvatar) return false;
-  if (prev.post.userName !== next.post.userName) return false;
-  // If all matched, it doesn't need to re-render
   return true;
 });

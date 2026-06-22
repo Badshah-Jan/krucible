@@ -12,12 +12,12 @@ export default function PremiumBenefitsScreen() {
   const router = useRouter();
   const { id, type } = useLocalSearchParams();
 
-  const handlePurchase = () => {
+  const handleRequest = () => {
     if (!id || !type) return;
 
     UI.confirm(
-      "Confirm Purchase",
-      "Upgrade this to Premium for $9.99/mo?",
+      "Request Premium Listing",
+      "Submit a request to upgrade this listing to Premium? Requests are reviewed and approved by Neighborly administrators. There is no automatic charge.",
       async () => {
         try {
           await SecurityService.requestPremiumUpgrade(
@@ -35,7 +35,7 @@ export default function PremiumBenefitsScreen() {
           UI.toast("Error", "error", e?.message || "Failed to submit upgrade request.");
         }
       },
-      "Subscribe",
+      "Submit Request",
       "warning"
     );
   };
@@ -61,9 +61,9 @@ export default function PremiumBenefitsScreen() {
               <Ionicons name="star" size={14} color="#D97706" />
               <Text style={styles.premiumBadgeText}>Neighborly Premium</Text>
             </View>
-            <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
+            <Text style={styles.premiumTitle}>Request Premium Listing</Text>
             <Text style={styles.premiumSubtitle}>
-              Supercharge your local visibility. Get featured placement and rank higher in local searches.
+              Boost your local visibility. Submit a request to get featured placement and rank higher in local searches. Requests are reviewed by our team.
             </Text>
           </Animated.View>
 
@@ -112,13 +112,13 @@ export default function PremiumBenefitsScreen() {
 
         {/* Footer Action */}
         <Animated.View entering={FadeInDown.duration(600).delay(400).springify()} style={styles.premiumFooter}>
-          <Text style={styles.premiumCancelText}>$9.99/month. Cancel anytime. No commitment.</Text>
-          <TouchableOpacity 
+          <Text style={styles.premiumCancelText}>Requests are reviewed by administrators. You will be notified once approved.</Text>
+          <TouchableOpacity
             activeOpacity={0.9}
-            onPress={handlePurchase}
+            onPress={handleRequest}
           >
             <LinearGradient colors={["#F59E0B", "#D97706"]} style={styles.premiumBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Text style={styles.premiumBtnText}>Subscribe Now</Text>
+              <Text style={styles.premiumBtnText}>Request Premium Upgrade</Text>
               <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
             </LinearGradient>
           </TouchableOpacity>

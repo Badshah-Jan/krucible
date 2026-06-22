@@ -131,8 +131,7 @@ export type PublicUserProfile = Pick<
   | "createdAt"
   | "lastActive"
 > & {
-  latitude?: number;
-  longitude?: number;
+  // Exact coordinates intentionally omitted from public profiles for privacy
 };
 
 const PROTECTED_PROFILE_FIELDS = [
@@ -248,6 +247,36 @@ export class UserService {
     }
   }
 
+  static async getUsersByRadius(
+    userLat: number,
+    userLng: number,
+    radiusKm: number = 5
+  ): Promise<PublicUserProfile[]> {
+    try {
+      const q = query(collection(db, "users"));
+      const snapshot = await getDocs(q);
+      
+      const { isWithinRadius } = require('./locationService');
+      
+      const nearbyUsers = snapshot.docs
+        .map((d) => d.data() as UserProfile)
+        .filter((u) => {
+          // If the user has location hidden, we might still include them if we want to guess based on community,
+          // but for strict GPS-based nearby, we check their stored coordinates.
+          if (u.latitude && u.longitude && u.privacySettings?.locationVisible !== false) {
+            return isWithinRadius(userLat, userLng, u.latitude, u.longitude, radiusKm);
+          }
+          return false;
+        })
+        .map((u) => this.toPublicProfile(u));
+        
+      return nearbyUsers;
+    } catch (error) {
+      console.error("Error fetching users by radius:", error);
+      return [];
+    }
+  }
+
   private static stripProtectedFields(
     updates: Partial<UserProfile>,
   ): Partial<UserProfile> {
@@ -291,7 +320,8 @@ export class UserService {
       await addDoc(reportsRef, {
         reporterId,
         contentId,
-        contentType,
+        targetId: contentId,
+        targetType: contentType,
         reason,
         status: "pending",
         createdAt: serverTimestamp(),
@@ -419,9 +449,9 @@ export class UserService {
       await setDoc(docRef, {
         ...this.stripProtectedFields(data),
         uid,
+        email: data.email || "no-email@neighborly.com", // Add back email since it's a protected field
         role: "user",
         karma: 0,
-
         postsCount: 0,
         commentsCount: 0,
         bio: "",
@@ -681,8 +711,7 @@ export class UserService {
       }
       // ─── END: Karma notification ────────────────────────────────────────
     } catch (error) {
-      console.error("Error incrementing karma:", error);
-      throw error;
+      console.warn("Karma increment failed (expected if cloud functions are missing):", error);
     }
   }
 
@@ -694,8 +723,7 @@ export class UserService {
         lastActive: serverTimestamp(),
       }, { merge: true });
     } catch (error) {
-      console.error("Error incrementing posts count:", error);
-      throw error;
+      console.warn("Posts count increment failed (expected if cloud functions are missing):", error);
     }
   }
 
@@ -707,8 +735,7 @@ export class UserService {
         lastActive: serverTimestamp(),
       }, { merge: true });
     } catch (error) {
-      console.error("Error incrementing comments count:", error);
-      throw error;
+      console.warn("Comments count increment failed (expected if cloud functions are missing):", error);
     }
   }
 

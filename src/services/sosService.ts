@@ -20,6 +20,7 @@ import { isWithinRadius, haversineDistance } from "./locationService";
 import NotificationService from "./notificationService";
 import { UserService } from "./userService";
 import { ChatService } from "./chatService";
+import { SecurityService } from "./securityService";
 
 export type SOSType = 
   | "Medical Emergency"
@@ -81,6 +82,8 @@ export class SosService {
     alertData: Omit<SOSAlert, "id" | "status" | "createdAt" | "expiresAt" | "responderIds" | "respondersCount" | "responders">
   ): Promise<string> {
     try {
+      await SecurityService.enforceRateLimit("sos_create");
+
       const now = new Date();
       const expiryHours = EMERGENCY_EXPIRY_MAP[alertData.type] || 24;
       const expiresAt = new Date(now.getTime() + expiryHours * 60 * 60 * 1000);
@@ -305,6 +308,49 @@ export class SosService {
         callback(null);
       }
     });
+  }
+
+  /**
+   * Fetch active SOS alerts by radius
+   */
+  static async getActiveSOSByRadius(
+    userLat: number,
+    userLng: number,
+    radiusKm: number = 10
+  ): Promise<SOSAlert[]> {
+    try {
+      // Fetch all alerts (in a real app, use GeoFirestore)
+      const q = query(
+        collection(db, "sos_alerts"),
+        orderBy("createdAt", "desc")
+      );
+      
+      const snapshot = await getDocs(q);
+      const now = new Date();
+      
+      const activeAlerts = snapshot.docs
+        .map((d: any) => ({ id: d.id, ...d.data() } as SOSAlert))
+        .filter((a: any) => {
+          if (a.status !== "active" && a.status !== "responding") return false;
+          const exp = a.expiresAt?.toDate ? a.expiresAt.toDate() : new Date(a.expiresAt ?? 0);
+          if (exp <= now) return false;
+          
+          if (a.location?.lat && a.location?.lng) {
+            return isWithinRadius(userLat, userLng, a.location.lat, a.location.lng, radiusKm);
+          }
+          return false;
+        })
+        .sort((a: any, b: any) => {
+          const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+          const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+          return bTime - aTime;
+        });
+
+      return activeAlerts;
+    } catch (error) {
+      console.error("getActiveSOSByRadius error:", error);
+      return [];
+    }
   }
 
   /**

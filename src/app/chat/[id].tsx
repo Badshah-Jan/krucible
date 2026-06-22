@@ -11,6 +11,7 @@ import {
   ActionSheetIOS,
   Clipboard,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,10 +20,22 @@ import { useTranslation } from 'react-i18next';
 import { Image } from 'expo-image';
 
 import Text from '@/components/common/Text';
-import GradientBg from '@/components/common/GradientBg';
+import SafetyBanner from '@/components/safety/SafetyBanner';
+import ReportModal from '@/components/safety/ReportModal';
 import { ChatService, ChatMessage, Conversation, MessageStatus } from '@/services/chatService';
 import { AuthService } from '@/services/authService';
 import { UserService } from '@/services/userService';
+import { TrustSafetyService } from '@/services/trustSafetyService';
+
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const T = {
+  bg: "#FFFFFF",
+  primary: "#FF385C", // Airbnb Coral
+  text: "#222222", // Airbnb Off-black
+  textSecondary: "#717171", // Airbnb Slate-gray
+  border: "#DDDDDD", // Airbnb border outline
+  separator: "#EBEBEB", // Airbnb divider
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(ts: any): string {
@@ -46,6 +59,13 @@ function isSameDay(a: any, b: any): boolean {
   const da = a.toDate ? a.toDate() : new Date(a);
   const db2 = b.toDate ? b.toDate() : new Date(b);
   return da.toDateString() === db2.toDateString();
+}
+
+function getInitials(name: string): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function isGrouped(current: ChatMessage, prev: ChatMessage | undefined): boolean {
@@ -87,8 +107,10 @@ export default function ChatDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [pendingMsgs, setPendingMsgs] = useState<ChatMessage[]>([]);
-  const [otherUserPresence, setOtherUserPresence] = useState<{ isOnline: boolean; lastSeen: any; isDeleted?: boolean } | null>(null);
+  const [otherUserPresence, setOtherUserPresence] = useState<{ isOnline: boolean; lastSeen: any; isDeleted?: boolean; photoURL?: string } | null>(null);
   const [showStickers, setShowStickers] = useState(false);
+  const [showChatSafety, setShowChatSafety] = useState(false);
+  const [reportModal, setReportModal] = useState<{ visible: boolean; targetId: string; targetOwnerId: string }>({ visible: false, targetId: '', targetOwnerId: '' });
 
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -104,6 +126,12 @@ export default function ChatDetailScreen() {
       unsub();
     };
   }, []);
+
+  // ── Check if chat safety warning should be shown ──────────────────────────
+  useEffect(() => {
+    if (!id) return;
+    TrustSafetyService.shouldShowChatSafetyWarning(id).then(setShowChatSafety);
+  }, [id]);
 
   // ── Subscribe to messages ──────────────────────────────────────────────────
   useEffect(() => {
@@ -210,6 +238,13 @@ export default function ChatDetailScreen() {
     ChatService.setTypingStatus(id, currentUser.uid, false).catch(() => {});
   }, [id, currentUser?.uid]);
 
+  // Clean up typing timer on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    };
+  }, []);
+
   // ── Compute who is typing ──────────────────────────────────────────────────
   const typingUsers: string[] = [];
   if (convMeta?.typing && currentUser?.uid) {
@@ -256,7 +291,6 @@ export default function ChatDetailScreen() {
         replyTo: null,
       }, participants);
     } catch (err) {
-      // Mark the optimistic message as failed
       setPendingMsgs((prev) =>
         prev.map((p) => (p.id === optimistic.id ? { ...p, status: 'failed' } : p))
       );
@@ -317,6 +351,7 @@ export default function ChatDetailScreen() {
           { text: 'Copy text', onPress: () => Clipboard.setString(msg.text ?? '') },
           { text: 'React 👍', onPress: () => ChatService.toggleReaction(id!, msg.id!, '👍', currentUser!.uid) },
           { text: 'React ❤️', onPress: () => ChatService.toggleReaction(id!, msg.id!, '❤️', currentUser!.uid) },
+          ...(!isOwner ? [{ text: 'Report Message', style: 'destructive' as const, onPress: () => setReportModal({ visible: true, targetId: msg.id!, targetOwnerId: msg.senderId }) }] : []),
           ...(isOwner ? [{ text: 'Delete', style: 'destructive' as const, onPress: () => ChatService.deleteMessage(id!, msg.id!) }] : []),
           { text: 'Cancel', style: 'cancel' as const },
         ]);
@@ -373,7 +408,7 @@ export default function ChatDetailScreen() {
                 msg.senderAvatar ? (
                   <Image source={{ uri: msg.senderAvatar }} style={styles.avatar} />
                 ) : (
-                  <View style={[styles.avatarFallback, { backgroundColor: '#2563EB' }]}>
+                  <View style={styles.avatarFallback}>
                     <Text style={styles.avatarFallbackText}>{(msg.senderName?.[0] ?? '?').toUpperCase()}</Text>
                   </View>
                 )
@@ -388,61 +423,69 @@ export default function ChatDetailScreen() {
               <Text style={styles.senderName}>{msg.senderName}</Text>
             )}
 
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onLongPress={() => handleLongPress(msg)}
-              style={[
-                styles.bubble,
-                isSystem ? styles.systemBubble : msg.type === 'sticker' ? styles.stickerBubble : isMe ? styles.myBubble : styles.theirBubble,
-                isPending && { opacity: 0.6 },
-                isFailed && { borderWidth: 1, borderColor: '#EF4444' },
-              ]}
-            >
-              {isDeleted ? (
-                <Text style={[styles.msgText, { fontStyle: 'italic', opacity: 0.5 }]}>Message deleted</Text>
-              ) : msg.type === "sos_alert" ? (
-                <View style={styles.sosAlertCard}>
-                  <View style={styles.sosHeader}>
-                    <Ionicons name="alert-circle" size={20} color="#FFFFFF" />
-                    <Text style={styles.sosTitle}>EMERGENCY ALERT</Text>
+            <View style={{ alignItems: isSystem ? 'center' : isMe ? 'flex-end' : 'flex-start' }}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onLongPress={() => handleLongPress(msg)}
+                style={[
+                  styles.bubble,
+                  isSystem ? styles.systemBubble : msg.type === 'sticker' ? styles.stickerBubble : isMe ? styles.myBubble : styles.theirBubble,
+                  isPending && { opacity: 0.6 },
+                  isFailed && { borderWidth: 1, borderColor: '#EF4444' },
+                ]}
+              >
+                {isDeleted ? (
+                  <Text style={[styles.msgText, isMe ? { color: '#FFFFFF' } : { color: T.text }, { fontStyle: 'italic', opacity: 0.5 }]}>Message deleted</Text>
+                ) : msg.type === "sos_alert" ? (
+                  <View style={styles.sosAlertCard}>
+                    <View style={styles.sosHeader}>
+                      <Ionicons name="alert-circle" size={20} color="#FFFFFF" />
+                      <Text style={styles.sosTitle}>EMERGENCY ALERT</Text>
+                    </View>
+                    <View style={styles.sosBody}>
+                      <Text style={styles.sosText}>{msg.text}</Text>
+                      {msg.metadata?.sosId && (
+                        <View style={styles.sosActions}>
+                          <TouchableOpacity 
+                            style={styles.sosBtn}
+                            onPress={() => router.push(`/sos/${msg.metadata.sosId}` as any)}
+                          >
+                            <Text style={styles.sosBtnText}>View SOS</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  <View style={styles.sosBody}>
-                    <Text style={styles.sosText}>{msg.text}</Text>
-                    {msg.metadata?.sosId && (
-                      <View style={styles.sosActions}>
-                        <TouchableOpacity 
-                          style={styles.sosBtn}
-                          onPress={() => router.push(`/sos/${msg.metadata.sosId}` as any)}
-                        >
-                          <Text style={styles.sosBtnText}>View SOS</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
+                ) : msg.type === "sticker" ? (
+                  <Text style={styles.stickerText}>{msg.text}</Text>
+                ) : msg.imageUrl ? (
+                  <Image source={{ uri: msg.imageUrl }} style={styles.msgImage} />
+                ) : (
+                  <Text style={[styles.msgText, isMe ? { color: '#FFFFFF' } : { color: T.text }]}>{msg.text}</Text>
+                )}
+              </TouchableOpacity>
+
+              {/* Meta row outside bubble to prevent bubble stretching */}
+              {!isSystem && msg.type !== 'sticker' && (
+                <View style={[styles.msgMetaOutside, isMe ? { marginRight: 4 } : { marginLeft: 4 }]}>
+                  <Text style={styles.msgTimeOutside}>
+                    {formatTime(msg.createdAt)}
+                  </Text>
+                  {isMe && (() => {
+                    const realStatus = ChatService.getMessageReadStatus(msg, convMeta, currentUser?.uid);
+                    const isRead = realStatus === 'read';
+                    return (
+                      <Ionicons
+                        name={isPending ? 'time-outline' : isFailed ? 'alert-circle-outline' : 'checkmark-done'}
+                        size={12}
+                        color={isFailed ? '#EF4444' : isPending ? '#CCCCCC' : isRead ? '#10B981' : '#9CA3AF'}
+                        style={{ marginLeft: 4 }}
+                      />
+                    );
+                  })()}
                 </View>
-              ) : msg.type === "sticker" ? (
-                <Text style={styles.stickerText}>{msg.text}</Text>
-              ) : msg.imageUrl ? (
-                <Image source={{ uri: msg.imageUrl }} style={styles.msgImage} />
-              ) : (
-                <Text style={styles.msgText}>{msg.text}</Text>
               )}
-              <View style={styles.msgMeta}>
-                <Text style={styles.msgTime}>{formatTime(msg.createdAt)}</Text>
-                {isMe && (() => {
-                  const realStatus = ChatService.getMessageReadStatus(msg, convMeta, currentUser?.uid);
-                  const isRead = realStatus === 'read';
-                  return (
-                    <Ionicons
-                      name={isPending ? 'time-outline' : isFailed ? 'alert-circle-outline' : 'checkmark-done'}
-                      size={12}
-                      color={isFailed ? '#EF4444' : isPending ? 'rgba(255,255,255,0.4)' : isRead ? '#34D399' : 'rgba(255,255,255,0.7)'}
-                      style={{ marginLeft: 4 }}
-                    />
-                  );
-                })()}
-              </View>
-            </TouchableOpacity>
+            </View>
 
             {/* Reactions row */}
             {reactionEntries.length > 0 && (
@@ -475,34 +518,44 @@ export default function ChatDetailScreen() {
         </View>
       );
     },
-    [currentUser, handleLongPress, id]
+    [currentUser, handleLongPress, id, convMeta]
   );
 
   const chatName = Array.isArray(name) ? name[0] : name ?? 'Chat';
 
   return (
-    <GradientBg>
-      <SafeAreaView style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top", "bottom"]}>
+        
         {/* ── Header ── */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+            <Ionicons name="chevron-back" size={24} color={T.text} />
           </TouchableOpacity>
 
           <View style={styles.headerInfo}>
             <View style={styles.headerAvatar}>
-              <Ionicons name="people" size={18} color="#2563EB" />
+              {convMeta?.type === 'dm' && otherUserPresence?.photoURL ? (
+                <Image source={{ uri: otherUserPresence.photoURL }} style={styles.headerAvatarImage} />
+              ) : convMeta?.type === 'dm' && chatName ? (
+                <View style={styles.headerAvatarInitials}>
+                  <Text style={styles.headerAvatarInitialsText}>{getInitials(chatName)}</Text>
+                </View>
+              ) : (
+                <Ionicons name="people" size={18} color={T.primary} />
+              )}
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.headerName} numberOfLines={1}>{otherUserPresence?.isDeleted ? 'Deleted Account' : chatName}</Text>
               {otherUserPresence?.isDeleted ? (
                 <Text style={[styles.headerSub, { color: '#EF4444' }]}>Account no longer exists</Text>
               ) : typingUsers.length > 0 ? (
-                <Text style={styles.headerSub}>
-                  {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing…
+                <Text style={[styles.headerSub, { color: T.primary }]}>
+                  {typingUsers.join(', ')} typing…
                 </Text>
               ) : convMeta?.type === 'dm' && otherUserPresence ? (
-                <Text style={[styles.headerSub, !otherUserPresence.isOnline && { color: '#9CA3AF' }]}>
+                <Text style={[styles.headerSub, !otherUserPresence.isOnline && { color: T.textSecondary }]}>
                   {otherUserPresence.isOnline
                     ? 'Online'
                     : otherUserPresence.lastSeen
@@ -522,21 +575,27 @@ export default function ChatDetailScreen() {
                 style={styles.headerIconBtn} 
                 onPress={() => Alert.alert("Coming Soon", "Voice calling will be available in a future update!")}
               >
-                <Ionicons name="call" size={20} color="#3B82F6" />
+                <Ionicons name="call" size={20} color={T.text} />
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.headerIconBtn}
                 onPress={() => Alert.alert("Coming Soon", "Video calling will be available in a future update!")}
               >
-                <Ionicons name="videocam" size={20} color="#3B82F6" />
+                <Ionicons name="videocam" size={20} color={T.text} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.headerIconBtn} onPress={handleBlockUser}>
-                <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+              <TouchableOpacity style={styles.headerIconBtn} onPress={() => {
+                Alert.alert('Options', undefined, [
+                  { text: isBlocked ? 'Unblock User' : 'Block User', style: isBlocked ? 'default' : 'destructive', onPress: handleBlockUser },
+                  { text: 'Report User', style: 'destructive', onPress: () => setReportModal({ visible: true, targetId: otherUid!, targetOwnerId: otherUid! }) },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
+              }}>
+                <Ionicons name="ellipsis-vertical" size={20} color={T.text} />
               </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity style={styles.headerIconBtn}>
-              <Ionicons name="information-circle-outline" size={22} color="#FFFFFF" />
+              <Ionicons name="information-circle-outline" size={22} color={T.text} />
             </TouchableOpacity>
           )}
         </View>
@@ -549,11 +608,11 @@ export default function ChatDetailScreen() {
         >
           {loading ? (
             <View style={styles.center}>
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={T.primary} />
             </View>
           ) : feedError ? (
             <View style={styles.center}>
-              <Ionicons name="cloud-offline-outline" size={36} color="rgba(255,255,255,0.4)" />
+              <Ionicons name="cloud-offline-outline" size={36} color={T.textSecondary} />
               <Text style={styles.errorText}>{feedError}</Text>
             </View>
           ) : (
@@ -565,9 +624,18 @@ export default function ChatDetailScreen() {
               contentContainerStyle={styles.msgList}
               onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
               onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+              ListHeaderComponent={showChatSafety ? (
+                <SafetyBanner
+                  type="chat"
+                  onDismiss={() => {
+                    setShowChatSafety(false);
+                    if (id) TrustSafetyService.dismissChatSafetyWarning(id);
+                  }}
+                />
+              ) : null}
               ListEmptyComponent={
                 <View style={styles.center}>
-                  <Ionicons name="chatbubbles-outline" size={48} color="rgba(255,255,255,0.2)" />
+                  <Ionicons name="chatbubbles-outline" size={48} color="#CCCCCC" />
                   <Text style={styles.emptyText}>No messages yet. Say hi!</Text>
                 </View>
               }
@@ -585,11 +653,11 @@ export default function ChatDetailScreen() {
             </View>
           )}
 
-          {/* ── Input ── */}
+          {/* ── Input Bar ── */}
           {otherUserPresence?.isDeleted ? (
             <View style={[styles.inputArea, { justifyContent: 'center', paddingVertical: 20 }]}>
-              <Ionicons name="trash" size={16} color="#9CA3AF" style={{ marginRight: 6 }} />
-              <Text style={{ color: '#9CA3AF', fontSize: 14, fontWeight: '700' }}>This account has been deleted.</Text>
+              <Ionicons name="trash" size={16} color={T.textSecondary} style={{ marginRight: 6 }} />
+              <Text style={{ color: T.textSecondary, fontSize: 14, fontWeight: '700' }}>This account has been deleted.</Text>
             </View>
           ) : isBlocked ? (
             <View style={[styles.inputArea, { justifyContent: 'center', paddingVertical: 20 }]}>
@@ -613,20 +681,20 @@ export default function ChatDetailScreen() {
                   );
                 }}
               >
-                <Ionicons name="add" size={24} color="#9CA3AF" />
+                <Ionicons name="add" size={24} color={T.textSecondary} />
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={styles.attachBtn}
                 onPress={() => setShowStickers(!showStickers)}
               >
-                <Ionicons name={showStickers ? "happy" : "happy-outline"} size={22} color={showStickers ? "#0B84FF" : "#9CA3AF"} />
+                <Ionicons name={showStickers ? "happy" : "happy-outline"} size={22} color={showStickers ? T.primary : T.textSecondary} />
               </TouchableOpacity>
 
               <TextInput
                 style={styles.input}
                 placeholder="Message..."
-                placeholderTextColor="#6B7280"
+                placeholderTextColor={T.textSecondary}
                 value={inputText}
                 onChangeText={handleInputChange}
                 onBlur={stopTyping}
@@ -645,24 +713,32 @@ export default function ChatDetailScreen() {
           )}
         </KeyboardAvoidingView>
       </SafeAreaView>
-    </GradientBg>
+
+      <ReportModal
+        visible={reportModal.visible}
+        targetId={reportModal.targetId}
+        targetType={reportModal.targetId === reportModal.targetOwnerId ? "user" : "message"}
+        targetOwnerId={reportModal.targetOwnerId}
+        onClose={() => setReportModal({ visible: false, targetId: '', targetOwnerId: '' })}
+      />
+    </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  errorText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
-  emptyText: { color: 'rgba(255,255,255,0.4)', fontSize: 15, marginTop: 8 },
+  errorText: { color: T.textSecondary, fontSize: 14, textAlign: 'center' },
+  emptyText: { color: T.textSecondary, fontSize: 15, marginTop: 8, fontWeight: '500' },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: 'rgba(11, 15, 25, 0.4)',
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: T.separator,
     zIndex: 10,
   },
   headerBtn: {
@@ -671,12 +747,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: -8,
   },
   headerIconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#F7F7F7',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -685,20 +762,39 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(37,99,235,0.2)',
+    backgroundColor: '#FFF1F2',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(37,99,235,0.4)',
+    borderColor: '#FFE4E6',
+    overflow: 'hidden',
   },
-  headerName: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
-  headerSub: { color: '#10B981', fontSize: 12, marginTop: 2, fontWeight: '500' },
+  headerAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  headerAvatarInitials: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: T.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerAvatarInitialsText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  headerName: { color: T.text, fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
+  headerSub: { color: '#10B981', fontSize: 12, marginTop: 2, fontWeight: '600' },
 
   msgList: { padding: 12, paddingBottom: 16 },
 
   dateSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, paddingHorizontal: 16 },
-  dateLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  dateLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginHorizontal: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
+  dateLine: { flex: 1, height: 1, backgroundColor: T.separator },
+  dateLabel: { color: T.textSecondary, fontSize: 11, marginHorizontal: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
 
   msgWrapper: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 8 },
   myWrapper: { justifyContent: 'flex-end' },
@@ -752,46 +848,57 @@ const styles = StyleSheet.create({
   
   avatarCol: { width: 32, marginRight: 10 },
   avatar: { width: 32, height: 32, borderRadius: 16 },
-  avatarFallback: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  avatarFallbackText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  avatarFallback: { 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6', 
+  },
+  avatarFallbackText: { color: T.textSecondary, fontSize: 12, fontWeight: '800' },
   avatarPlaceholder: { width: 32, height: 32 },
 
   msgContent: { maxWidth: '78%' },
-  senderName: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 4, marginLeft: 14, fontWeight: '600' },
+  senderName: { color: T.textSecondary, fontSize: 12, marginBottom: 4, marginLeft: 14, fontWeight: '600' },
 
   bubble: { 
     borderRadius: 20, 
     paddingHorizontal: 16, 
     paddingVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
   },
-  myBubble: { backgroundColor: '#0B84FF', borderBottomRightRadius: 4 },
-  theirBubble: { backgroundColor: '#262628', borderBottomLeftRadius: 4 },
-  systemBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0, shadowOpacity: 0, elevation: 0 },
-  stickerBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0, shadowOpacity: 0, elevation: 0 },
+  myBubble: { backgroundColor: T.primary, borderBottomRightRadius: 4 },
+  theirBubble: { backgroundColor: '#F2F2F2', borderBottomLeftRadius: 4 },
+  systemBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
+  stickerBubble: { backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
   
-  msgText: { color: '#FFFFFF', fontSize: 16, lineHeight: 22 },
+  msgText: { fontSize: 15, lineHeight: 21, fontWeight: '500' },
   stickerText: { fontSize: 72, lineHeight: 80 },
   msgImage: { width: 220, height: 220, borderRadius: 16 },
   
-  msgMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 6, opacity: 0.7 },
-  msgTime: { color: '#FFFFFF', fontSize: 11, fontWeight: '500' },
+  msgMetaOutside: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  msgTimeOutside: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: T.textSecondary,
+  },
 
   reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, marginLeft: 4 },
   reactionChip: {
-    backgroundColor: '#2C2C2E',
+    backgroundColor: '#F7F7F7',
     borderRadius: 16,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#3A3A3C',
+    borderColor: T.border,
   },
-  reactionChipActive: { backgroundColor: 'rgba(11, 132, 255, 0.2)', borderColor: '#0B84FF' },
-  reactionText: { color: '#FFFFFF', fontSize: 13 },
+  reactionChipActive: { backgroundColor: '#FFE4E6', borderColor: T.primary },
+  reactionText: { color: T.text, fontSize: 13, fontWeight: '600' },
 
   retryBtn: { marginTop: 6, alignSelf: 'flex-end' },
   retryText: { color: '#EF4444', fontSize: 12, fontWeight: '600' },
@@ -802,9 +909,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 10,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#2C2C2E',
+    borderTopColor: T.separator,
   },
   attachBtn: {
     width: 36,
@@ -819,27 +926,28 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 40,
     maxHeight: 120,
-    backgroundColor: '#2C2C2E',
+    backgroundColor: '#F7F7F7',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 10,
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: T.text,
+    fontSize: 15,
+    fontWeight: '500',
     borderWidth: 1,
-    borderColor: '#3A3A3C',
+    borderColor: T.border,
   },
   sendBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#0B84FF',
+    backgroundColor: T.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 2,
-    shadowColor: '#0B84FF',
+    shadowColor: T.primary,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 2,
   },
@@ -847,9 +955,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     padding: 16,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#2C2C2E',
+    borderTopColor: T.separator,
     justifyContent: 'center',
     gap: 12,
   },
@@ -858,8 +966,10 @@ const styles = StyleSheet.create({
     height: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2C2C2E',
+    backgroundColor: '#F7F7F7',
     borderRadius: 30,
+    borderWidth: 1,
+    borderColor: T.border,
   },
   stickerItemText: {
     fontSize: 32,

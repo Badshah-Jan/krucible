@@ -11,7 +11,8 @@ import {
   TouchableOpacity,
   View,
   Alert,
-  ScrollView
+  ScrollView,
+  Platform
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -21,14 +22,16 @@ import { ChatService, Conversation } from "@/services/chatService";
 import { CommunityDoc, CommunityService } from "@/services/communityService";
 import { useAppStore } from "@/store/appStore";
 
+import { Colors } from "@/constants/colors";
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-  bg: "#F8F9FA",
-  card: "#FFFFFF",
-  border: "#E5E7EB",
-  text: "#111827",
-  textSecondary: "#6B7280",
-  primary: "#EF4444",
+  bg: Colors.bg,
+  card: Colors.card,
+  border: Colors.border,
+  text: Colors.text,
+  textSecondary: Colors.textSecondary,
+  primary: Colors.primary,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -53,7 +56,7 @@ function getInitials(name: string): string {
 }
 
 const AVATAR_COLORS = [
-  "#C2410C",
+  "#FF385C", // Coral
   "#166534",
   "#1D4ED8",
   "#B45309",
@@ -164,7 +167,6 @@ export default function ChatsScreen() {
 
   const communityName =
     community?.name || community?.district || "Your Community";
-  const memberCount = communityDoc?.memberCount ?? 0;
 
   // ── Virtualized list helpers ───────────────────────────────────────────────
   const handleDeleteChat = useCallback((conv: Conversation, name: string) => {
@@ -211,6 +213,56 @@ export default function ChatsScreen() {
     return sections;
   };
 
+  // ── Highlighted Community Chat Card ───────────────────────────────────────
+  const renderCommunityChatCard = (conv: Conversation) => {
+    const unread = conv.unreadCounts?.[uid ?? ""] ?? 0;
+    const timeLabel = formatTimeAgo(conv.lastMessageAt);
+    const displayName = conv.name ?? "Community Chat";
+    const navRoute = `/chat/${conv.id}?name=${encodeURIComponent(displayName)}`;
+
+    return (
+      <TouchableOpacity
+        key={conv.id}
+        style={styles.communityCard}
+        activeOpacity={0.9}
+        onPress={() => router.push(navRoute as any)}
+      >
+        <View style={styles.communityCardLeft}>
+          <View style={styles.communityCardIcon}>
+            <Ionicons name="home" size={24} color="#FFFFFF" />
+          </View>
+          <View style={styles.communityCardBadge}>
+            <Text style={styles.communityCardBadgeText}>TOWN HALL</Text>
+          </View>
+        </View>
+
+        <View style={styles.communityCardMiddle}>
+          <Text style={styles.communityCardTitle} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={styles.communityCardDesc} numberOfLines={1}>
+            {conv.lastMessage || "No messages yet"}
+          </Text>
+          <Text style={styles.communityCardTime}>
+            Active {timeLabel}
+          </Text>
+        </View>
+
+        <View style={styles.communityCardRight}>
+          {unread > 0 ? (
+            <View style={styles.communityCardUnread}>
+              <Text style={styles.communityCardUnreadText}>
+                {unread}
+              </Text>
+            </View>
+          ) : (
+            <Ionicons name="chevron-forward" size={20} color={T.primary} />
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderSectionHeader = ({ section }: { section: any }) => {
     const { type, data } = section;
 
@@ -218,14 +270,9 @@ export default function ChatsScreen() {
       return (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>COMMUNITY CHAT</Text>
+            <Text style={styles.sectionTitle}>Community Town Hall</Text>
           </View>
-
-          <View style={styles.listContainer}>
-            {data.map((conv: Conversation, i: number) =>
-              renderConversationRow(conv, i === data.length - 1),
-            )}
-          </View>
+          {data.map((conv: Conversation) => renderCommunityChatCard(conv))}
         </View>
       );
     }
@@ -234,9 +281,9 @@ export default function ChatsScreen() {
       return (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{type === "business" ? "BUSINESS INQUIRIES" : "DIRECT MESSAGES"}</Text>
+            <Text style={styles.sectionTitle}>{type === "business" ? "Business Inquiries" : "Direct Messages"}</Text>
             <TouchableOpacity onPress={() => router.push("/chat/new")}>
-              <Text style={styles.sectionAction}>New chat</Text>
+              <Text style={styles.sectionAction}>New Chat</Text>
             </TouchableOpacity>
           </View>
 
@@ -252,7 +299,7 @@ export default function ChatsScreen() {
     if (type === "empty") {
       return (
         <View style={styles.center}>
-          <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
+          <Ionicons name="chatbubbles-outline" size={48} color="#CCCCCC" />
           <Text style={styles.emptyTitle}>No conversations found</Text>
           <Text style={styles.emptyDesc}>
             {searchQuery
@@ -276,7 +323,7 @@ export default function ChatsScreen() {
       // For DMs, derive the other participant's name
       let displayName = conv.name ?? "Chat";
       let initStr = "?";
-      let bgColor = "#EF4444";
+      let bgColor = T.primary;
       if (isDm && uid) {
         const otherId = conv.participants.find((p) => p !== uid);
         displayName = otherId
@@ -291,7 +338,7 @@ export default function ChatsScreen() {
       return (
         <TouchableOpacity
           key={conv.id}
-          style={[styles.rowItem, isLast && { borderBottomWidth: 0 }]}
+          style={styles.rowItem}
           activeOpacity={0.8}
           onPress={() => router.push(navRoute as any)}
           onLongPress={() => handleDeleteChat(conv, displayName)}
@@ -308,13 +355,13 @@ export default function ChatsScreen() {
             <View
               style={[
                 styles.channelIcon,
-                { backgroundColor: (conv.iconColor ?? "#EF4444") + "18" },
+                { backgroundColor: (conv.iconColor ?? T.primary) + "15" },
               ]}
             >
               <Ionicons
                 name={(conv.iconName ?? "chatbubbles") as any}
-                size={18}
-                color={conv.iconColor ?? "#EF4444"}
+                size={20}
+                color={conv.iconColor ?? T.primary}
               />
             </View>
           )}
@@ -341,7 +388,7 @@ export default function ChatsScreen() {
                 name="checkmark-done"
                 size={14}
                 color="#10B981"
-                style={{ marginTop: 4 }}
+                style={{ marginTop: 6 }}
               />
             )}
           </View>
@@ -353,8 +400,9 @@ export default function ChatsScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={T.bg} />
-      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top"]}>
+        
         {/* ── Header ── */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
@@ -370,7 +418,7 @@ export default function ChatsScreen() {
               <Ionicons
                 name="notifications-outline"
                 size={18}
-                color="#4B5563"
+                color={T.text}
               />
             </TouchableOpacity>
             <TouchableOpacity
@@ -378,7 +426,7 @@ export default function ChatsScreen() {
               activeOpacity={0.8}
               onPress={() => router.push("/chat/new")}
             >
-              <Ionicons name="create-outline" size={18} color="#4B5563" />
+              <Ionicons name="create-outline" size={18} color={T.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -388,22 +436,23 @@ export default function ChatsScreen() {
           <Ionicons
             name="search-outline"
             size={18}
-            color="#9CA3AF"
+            color={T.textSecondary}
             style={{ marginRight: 8 }}
           />
           <TextInput
             placeholder="Search messages, people..."
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={T.textSecondary}
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+              <Ionicons name="close-circle" size={18} color={T.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
+
         {/* ── Tabs ── */}
         <View style={{ borderBottomWidth: 1, borderBottomColor: T.border }}>
           <ScrollView
@@ -452,14 +501,6 @@ export default function ChatsScreen() {
           />
         )}
       </SafeAreaView>
-
-      {/* ── FAB ── */}
-      <TouchableOpacity style={styles.fab} activeOpacity={0.9} onPress={() => router.push('/chat/new' as any)}>
-        <Ionicons name="chatbubble-ellipses-outline" size={24} color="#FFFFFF" />
-        <View style={styles.fabPlus}>
-          <Ionicons name="add" size={12} color="#FFFFFF" />
-        </View>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -481,14 +522,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   emptyDesc: {
-    color: "#6B7280",
+    color: T.textSecondary,
     fontSize: 14,
     textAlign: "center",
     marginTop: 6,
     paddingHorizontal: 20,
+    fontWeight: "500",
   },
   tabsContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     paddingTop: 8,
     gap: 8,
   },
@@ -496,37 +538,41 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#F7F7F7",
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: T.border,
   },
   tabBtnActive: {
-    backgroundColor: "#111827",
+    backgroundColor: T.text,
+    borderColor: T.text,
   },
   tabText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#4B5563",
+    fontSize: 13,
+    fontWeight: "700",
+    color: T.textSecondary,
   },
   tabTextActive: {
     color: "#FFFFFF",
   },
-  scroll: { paddingBottom: 100 },
+  scroll: { paddingTop: 24, paddingBottom: 60 },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
+    backgroundColor: "#FFFFFF",
   },
-  headerSub: { fontSize: 11, color: T.primary, fontWeight: "700" },
-  headerTitle: { fontSize: 26, fontWeight: "800", color: T.text, marginTop: 2 },
+  headerSub: { fontSize: 11, color: T.primary, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
+  headerTitle: { fontSize: 32, fontWeight: "800", color: T.text, marginTop: 4, letterSpacing: -0.8 },
   headerRight: { flexDirection: "row", gap: 8 },
   circleBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: T.card,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#F7F7F7",
     borderWidth: 1,
     borderColor: T.border,
     alignItems: "center",
@@ -536,75 +582,117 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: T.card,
+    backgroundColor: "#F7F7F7",
     borderRadius: 12,
-    marginHorizontal: 16,
+    marginHorizontal: 24,
     paddingHorizontal: 14,
-    height: 44,
-    marginBottom: 12,
+    height: 48,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: T.border,
   },
-  searchInput: { flex: 1, color: T.text, fontSize: 13, fontWeight: "500" },
+  searchInput: { flex: 1, color: T.text, fontSize: 14, fontWeight: "600" },
 
-  section: { marginBottom: 22, paddingHorizontal: 16 },
+  section: { marginBottom: 36, paddingHorizontal: 24 },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+    alignItems: "flex-end",
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 10,
+    fontSize: 16,
     fontWeight: "800",
-    color: "#9CA3AF",
-    letterSpacing: 1.5,
+    color: T.text,
+    letterSpacing: -0.3,
   },
-  sectionAction: { fontSize: 11, fontWeight: "700", color: T.primary },
+  sectionAction: { fontSize: 13, fontWeight: "700", color: T.primary },
 
+  // Highlighted Community Chat Card
   communityCard: {
-    backgroundColor: "#1E293B",
-    borderRadius: 20,
-    padding: 16,
+    backgroundColor: Colors.card,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
     flexDirection: "row",
     alignItems: "center",
+    marginTop: 4,
   },
-  commIconBox: {
+  communityCardLeft: {
+    marginRight: 12,
+    alignItems: "center",
+  },
+  communityCardIcon: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: "rgba(239,68,68,0.12)",
+    borderRadius: 22,
+    backgroundColor: T.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
   },
-  commInfo: { flex: 1 },
-  commTitle: { fontSize: 14, fontWeight: "800", color: "#FFFFFF" },
-  commSub: { fontSize: 11, color: "#9CA3AF", marginTop: 2 },
-  activeRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  greenDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#10B981",
-    marginRight: 5,
+  communityCardBadge: {
+    backgroundColor: T.text,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginTop: -6,
   },
-  activeText: { fontSize: 10, color: "#10B981", fontWeight: "700" },
+  communityCardBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  communityCardMiddle: {
+    flex: 1,
+    marginRight: 10,
+  },
+  communityCardTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: T.text,
+  },
+  communityCardDesc: {
+    fontSize: 12,
+    color: T.textSecondary,
+    marginTop: 2,
+    fontWeight: "400",
+  },
+  communityCardTime: {
+    fontSize: 10,
+    color: T.textSecondary,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  communityCardRight: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  communityCardUnread: {
+    backgroundColor: T.primary,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  communityCardUnreadText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "700",
+  },
 
   listContainer: {
-    backgroundColor: T.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: T.border,
-    paddingHorizontal: 16,
-    elevation: 1,
+    backgroundColor: "#FFFFFF",
   },
   rowItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: Colors.border,
   },
   avatarContainer: { marginRight: 12 },
   initialsAvatar: {
@@ -614,7 +702,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  initialsText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  initialsText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
   channelIcon: {
     width: 40,
     height: 40,
@@ -623,75 +711,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-  rowMiddle: { flex: 1, marginRight: 10 },
-  rowTitle: { fontSize: 13, fontWeight: "800", color: T.text },
-  rowDesc: { fontSize: 11, color: T.textSecondary, marginTop: 3 },
-  rowRight: { alignItems: "flex-end" },
-  rowTime: { fontSize: 9, color: "#9CA3AF", fontWeight: "600" },
+  rowMiddle: { flex: 1, marginRight: 8 },
+  rowTitle: { fontSize: 14, fontWeight: "600", color: T.text },
+  rowDesc: { fontSize: 12, color: T.textSecondary, marginTop: 2, fontWeight: "400" },
+  rowRight: { alignItems: "flex-end", justifyContent: "center" },
+  rowTime: { fontSize: 11, color: T.textSecondary, fontWeight: "400" },
   badge: {
     backgroundColor: T.primary,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
     marginTop: 4,
   },
-  badgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "800" },
-
-  emptySection: {
-    backgroundColor: T.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: T.border,
-    padding: 24,
-    alignItems: "center",
-    gap: 8,
-  },
-  emptySectionText: { color: T.textSecondary, fontSize: 13 },
-  startChatBtn: {
-    backgroundColor: T.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 100,
-    marginTop: 4,
-  },
-  startChatBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  badgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "700" },
 
   emptyTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "800",
-    color: "#4B5563",
+    color: T.text,
     marginTop: 10,
-  },
-  // FAB
-  fab: {
-    position: 'absolute',
-    bottom: 110,
-    right: 24,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#6D28D9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#6D28D9',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-    zIndex: 9999,
-  },
-  fabPlus: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    backgroundColor: '#6D28D9',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center'
   },
 });

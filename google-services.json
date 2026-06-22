@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "345012250731-gs6a37be0btv16bkf9s3dh3oe8j511op.apps.googleusercontent.com",
+          "client_id": "345012250731-k29fqh757fit11nd2lisl2venij46n46.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.neighborly.app",
-            "certificate_hash": "91c6dbdc39448bcab37c83ce3f0456a4f77b39b7"
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
           }
         },
         {

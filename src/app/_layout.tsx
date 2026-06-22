@@ -29,7 +29,9 @@ if (!app) {
 LogBox.ignoreLogs([
   "FirebaseError: Missing or insufficient permissions",
   "@firebase/firestore",
-  "auth/requires-recent-login"
+  "auth/requires-recent-login",
+  "functions/not-found",
+  "FirebaseError: not-found"
 ]);
 
 // ─── Global Alert Override ──────────────────────────────────────────────────
@@ -251,7 +253,46 @@ export default function RootLayout() {
 
         // ── Restore location/community from Firestore on every app start ──
         try {
-          const profile = await UserService.getOwnProfile(user.uid);
+          let profile: any = null;
+          let profileLoadError: any = null;
+          
+          try {
+            profile = await UserService.getOwnProfile(user.uid);
+          } catch (fetchError: any) {
+            profileLoadError = fetchError;
+            // Distinguish permission errors from genuine missing profiles.
+            // If it's a Firestore permissions error, don't treat it as a ghost account.
+            const isPermissionError = 
+              fetchError?.code === 'permission-denied' ||
+              fetchError?.message?.includes('Missing or insufficient permissions') ||
+              fetchError?.message?.includes('permission-denied');
+            
+            if (isPermissionError) {
+              console.warn("[Auth] Could not load profile (permissions). Proceeding without community restore.");
+              // Don't delete — this is a Firestore rules issue, not a missing account
+            } else {
+              console.error("[Auth] Unexpected profile load error:", fetchError);
+            }
+          }
+          
+          if (!profile && !profileLoadError) {
+            // Only force-delete if the profile is definitively missing AND it's not a brand new signup.
+            // (Brand new signups won't have a profile for ~500ms while login.tsx creates it)
+            const creationTime = new Date(user.metadata?.creationTime || 0).getTime();
+            const isBrandNewUser = Date.now() - creationTime < 2 * 60 * 1000; // < 2 minutes old
+            
+            if (isBrandNewUser) {
+              console.log("[Auth] Brand new user detected without profile yet. Giving login screen time to create it.");
+              // Do not return here, let auth initialize so login.tsx can do its job.
+            } else {
+              console.warn("[Auth] User document genuinely missing. Forcing ghost account deletion.");
+              try { await user.delete(); } catch { await AuthService.logout(); }
+              logout();
+              setAuthInitialized(true);
+              return;
+            }
+          }
+
           if (profile?.latitude && profile?.longitude && profile?.communityId) {
             // Restore saved community into Zustand
             setLocation(

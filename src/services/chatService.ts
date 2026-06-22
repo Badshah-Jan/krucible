@@ -531,7 +531,7 @@ export class ChatService {
    */
   static subscribeToUserPresence(
     uid: string,
-    callback: (data: { isOnline: boolean; lastSeen: any; isDeleted?: boolean }) => void,
+    callback: (data: { isOnline: boolean; lastSeen: any; isDeleted?: boolean; photoURL?: string }) => void,
   ): () => void {
     return onSnapshot(doc(db, "users", uid), (snap: any) => {
       if (snap.exists()) {
@@ -540,12 +540,14 @@ export class ChatService {
           isOnline: d.isOnline ?? false,
           lastSeen: d.lastSeen ?? null,
           isDeleted: false,
+          photoURL: d.photoURL ?? "",
         });
       } else {
         callback({
           isOnline: false,
           lastSeen: null,
           isDeleted: true,
+          photoURL: "",
         });
       }
     });

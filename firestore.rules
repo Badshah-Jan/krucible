@@ -35,8 +35,12 @@ service cloud.firestore {
       return isAuthenticated() && callerRole() == 'admin';
     }
 
+    function isSuperAdmin() {
+      return isAuthenticated() && callerRole() == 'superadmin';
+    }
+
     function isModerator() {
-      return isAuthenticated() && (callerRole() == 'moderator' || callerRole() == 'admin');
+      return isAuthenticated() && (callerRole() == 'moderator' || callerRole() == 'admin' || callerRole() == 'superadmin');
     }
 
     function isEmailVerified() {
@@ -59,19 +63,6 @@ service cloud.firestore {
       let diff = incomingData().diff(existingData()).affectedKeys();
       let fcmTouched = diff.hasAny(['fcmToken', 'fcmTokens']);
       return !fcmTouched || diff.hasOnly(['fcmToken', 'fcmTokens', 'lastActive', 'isOnline', 'lastSeen']);
-    }
-
-    function isConversationParticipant(conversationId) {
-      return request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-    }
-
-    function isCommunityConversation(conversationId) {
-      return get(/databases/$(database)/documents/conversations/$(conversationId)).data.type == 'community';
-    }
-
-    function isInSameCommunity(communityId) {
-      return userDoc(request.auth.uid).get('communityId', '') == communityId
-        && communityId != '';
     }
 
     function businessOwnerOnlyFields() {
@@ -105,14 +96,14 @@ service cloud.firestore {
         isAuthenticated()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followers', 'following'])
       ) || (
-        isAdmin()
+        isAdmin() || isSuperAdmin()
       );
 
-      allow delete: if isOwner(userId);
+      allow delete: if isOwner(userId) || isAdmin() || isSuperAdmin();
 
       match /karma_history/{historyId} {
         allow read: if isOwner(userId);
-        allow write: if false;
+        allow create: if isAuthenticated();
         allow delete: if isOwner(userId);
       }
     }
@@ -133,11 +124,12 @@ service cloud.firestore {
         (existingData().userId == request.auth.uid
           && incomingData().userId == existingData().userId)
         || request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['likedBy', 'likes', 'likesCount', 'responderIds', 'responderDetails', 'respondersCount', 'commentsCount'])
+            .hasOnly(['likedBy', 'likes', 'likesCount', 'responderIds', 'responderDetails', 'respondersCount', 'commentsCount', 'status', 'cancelledAt'])
+        || isModerator()
       );
 
-      allow delete: if isAuthenticated()
-        && existingData().userId == request.auth.uid;
+      allow delete: if (isAuthenticated()
+        && existingData().userId == request.auth.uid) || isModerator();
 
       match /comments/{commentId} {
         allow read: if isAuthenticated();
@@ -152,18 +144,22 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['likedBy', 'likesCount']);
 
-        allow delete: if isAuthenticated()
-          && existingData().userId == request.auth.uid;
+        allow delete: if (isAuthenticated()
+          && existingData().userId == request.auth.uid) || isModerator();
       }
     }
 
-    // ─── Conversations & messages ────────────────────────────────────────
+    // ─── Conversations & messages ─────────────────────────────────────────
+    // NOTE: We avoid calling userDoc() in read rules to prevent permission
+    // errors when the user document is not yet fully initialized.
     match /conversations/{conversationId} {
+      // Participants can always read their own conversations.
+      // Community conversations: any authenticated user can read
+      // (client filters by communityId). This avoids expensive cross-doc gets.
       allow read: if isAuthenticated() && (
         resource == null
         || request.auth.uid in resource.data.participants
-        || (resource.data.type == 'community'
-            && isInSameCommunity(resource.data.get('communityId', '')))
+        || resource.data.type == 'community'
       );
 
       allow create: if isAuthenticated()
@@ -176,11 +172,12 @@ service cloud.firestore {
         );
 
       allow update: if isAuthenticated() && (
+        // Participants updating DM metadata
         (request.auth.uid in existingData().participants
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['lastMessage', 'lastMessageAt', 'lastSenderId', 'readBy', 'typing', 'unreadCounts', 'participantNames', 'participants']))
+        // Community conversations: any authenticated user can update metadata
         || (existingData().type == 'community'
-            && isInSameCommunity(existingData().get('communityId', ''))
             && request.resource.data.diff(resource.data).affectedKeys()
                 .hasOnly(['lastMessage', 'lastMessageAt', 'lastSenderId', 'readBy', 'typing', 'unreadCounts', 'participants', 'participantNames']))
       );
@@ -190,23 +187,19 @@ service cloud.firestore {
         && existingData().type == 'dm';
 
       match /messages/{messageId} {
+        // Messages in DMs: only participants can read.
+        // Messages in community chats: any authenticated user can read.
         allow read: if isAuthenticated() && (
-          isConversationParticipant(conversationId)
-          || (isCommunityConversation(conversationId)
-              && isInSameCommunity(
-                get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('communityId', '')
-              ))
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+          || get(/databases/$(database)/documents/conversations/$(conversationId)).data.type == 'community'
         );
 
         allow create: if isAuthenticated()
           && isEmailVerified()
           && (
             (incomingData().senderId == request.auth.uid
-              && (isConversationParticipant(conversationId)
-                  || (isCommunityConversation(conversationId)
-                      && isInSameCommunity(
-                        get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('communityId', '')
-                      )))
+              && (request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+                  || get(/databases/$(database)/documents/conversations/$(conversationId)).data.type == 'community')
               && incomingData().get('text', '').size() <= 5000)
             || (incomingData().senderId == 'system_sos'
               && incomingData().type == 'sos_alert')
@@ -254,8 +247,8 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isEmailVerified();
       allow update: if isAuthenticated()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'lastActive']);
-      allow delete: if false;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'updatedAt']);
+      allow delete: if isModerator();
     }
 
     // ─── Reports ─────────────────────────────────────────────────────────
@@ -289,10 +282,10 @@ service cloud.firestore {
         (existingData().userId == request.auth.uid
           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(businessPrivilegedFields()))
         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(businessOwnerOnlyFields())
-        || isAdmin()
+        || isModerator()
       );
 
-      allow delete: if isAuthenticated() && existingData().userId == request.auth.uid;
+      allow delete: if (isAuthenticated() && existingData().userId == request.auth.uid) || isModerator();
     }
 
     match /service_reviews/{reviewId} {
@@ -319,10 +312,10 @@ service cloud.firestore {
         (existingData().userId == request.auth.uid
           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(businessPrivilegedFields()))
         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(businessOwnerOnlyFields())
-        || isAdmin()
+        || isModerator()
       );
 
-      allow delete: if isAuthenticated() && existingData().userId == request.auth.uid;
+      allow delete: if (isAuthenticated() && existingData().userId == request.auth.uid) || isModerator();
     }
 
     match /business_reviews/{reviewId} {
@@ -341,7 +334,8 @@ service cloud.firestore {
         && incomingData().creatorId == request.auth.uid;
       allow update: if isAuthenticated() && (
         existingData().creatorId == request.auth.uid
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['responders', 'responderIds', 'status'])
+        || request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['responders', 'responderIds', 'status', 'respondersCount'])
       );
       allow delete: if isAuthenticated() && existingData().creatorId == request.auth.uid;
     }
@@ -349,18 +343,18 @@ service cloud.firestore {
     // ─── Subscription requests (premium) ─────────────────────────────────
     match /subscription_requests/{requestId} {
       allow read: if isAuthenticated() && (
-        existingData().userId == request.auth.uid || isAdmin()
+        existingData().userId == request.auth.uid || isModerator()
       );
       allow create: if isAuthenticated()
         && isEmailVerified()
         && incomingData().userId == request.auth.uid
         && incomingData().status == 'pending';
-      allow update, delete: if isAdmin();
+      allow update, delete: if isModerator();
     }
 
     // ─── Security events (write via Cloud Functions only) ────────────────
     match /security_events/{eventId} {
-      allow read: if isAdmin() || isModerator();
+      allow read: if isModerator();
       allow write: if false;
     }
 

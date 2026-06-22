@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users as UsersIcon, MessageSquare, AlertTriangle, Briefcase, Store, Shield, Settings as SettingsIcon, LogOut, Search, Bell } from 'lucide-react';
+import { LayoutDashboard, Users as UsersIcon, MessageSquare, AlertTriangle, Briefcase, Store, Shield, Settings as SettingsIcon, LogOut, Search, Bell, Star } from 'lucide-react';
 import Users from './pages/Users';
 import SOSCenter from './pages/SOS';
 import Providers from './pages/Providers';
@@ -9,6 +9,8 @@ import Communities from './pages/Communities';
 import Posts from './pages/Posts';
 import Security from './pages/Security';
 import Settings from './pages/Settings';
+import Notifications from './pages/Notifications';
+import Premium from './pages/Premium';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
@@ -34,8 +36,10 @@ function Sidebar() {
     { name: 'SOS Command Center', path: '/sos', icon: AlertTriangle, color: 'text-red-500' },
     { name: 'Service Providers', path: '/providers', icon: Briefcase },
     { name: 'Local Businesses', path: '/businesses', icon: Store },
+    { name: 'Premium Requests', path: '/premium', icon: Star, color: 'text-yellow-500' },
     { name: 'Security & Abuse', path: '/security', icon: Shield },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Notifications', path: '/notifications', icon: Bell },
+    { name: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
 
   return (
@@ -94,10 +98,10 @@ function Header() {
       </div>
       
       <div className="flex items-center space-x-4">
-        <button className="relative p-2 text-gray-400 hover:text-white transition-colors">
+        <Link to="/notifications" className="relative p-2 text-gray-400 hover:text-white transition-colors">
           <Bell className="w-5 h-5" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
+        </Link>
         <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-purple-500 border-2 border-dark cursor-pointer"></div>
       </div>
     </header>
@@ -109,13 +113,47 @@ function Dashboard() {
   const [sosCount, setSosCount] = useState(0);
   const [communityCount, setCommunityCount] = useState(0);
   const [verifiedProviderCount, setVerifiedProviderCount] = useState(0);
+  const [postCount, setPostCount] = useState(0);
+  const [businessCount, setBusinessCount] = useState(0);
   const [pendingActions, setPendingActions] = useState<PendingProviderAction[]>([]);
+  const [chartData, setChartData] = useState<{name: string, users: number}[]>([]);
 
   React.useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, "users"), (snap: QuerySnapshot<DocumentData>) => setUserCount(snap.size));
+    const unsubUsers = onSnapshot(collection(db, "users"), (snap: QuerySnapshot<DocumentData>) => {
+      setUserCount(snap.size);
+      
+      // Compute last 7 days user registrations
+      const days: Record<string, number> = {};
+      const today = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        days[d.toLocaleDateString('en-US', { weekday: 'short' })] = 0;
+      }
+
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.createdAt) {
+          const date = new Date(data.createdAt.toMillis ? data.createdAt.toMillis() : data.createdAt);
+          // Check if within last 7 days
+          if ((today.getTime() - date.getTime()) / (1000 * 3600 * 24) <= 7) {
+            const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+            if (days[dayName] !== undefined) {
+              days[dayName]++;
+            }
+          }
+        }
+      });
+      
+      const newChartData = Object.keys(days).map(name => ({ name, users: days[name] }));
+      setChartData(newChartData);
+    });
+
     const unsubSos = onSnapshot(query(collection(db, "sos_alerts"), where("status", "==", "active")), (snap: QuerySnapshot<DocumentData>) => setSosCount(snap.size));
     const unsubComm = onSnapshot(collection(db, "communities"), (snap: QuerySnapshot<DocumentData>) => setCommunityCount(snap.size));
     const unsubProv = onSnapshot(query(collection(db, "services"), where("verified", "==", true)), (snap: QuerySnapshot<DocumentData>) => setVerifiedProviderCount(snap.size));
+    const unsubPosts = onSnapshot(collection(db, "posts"), (snap: QuerySnapshot<DocumentData>) => setPostCount(snap.size));
+    const unsubBusinesses = onSnapshot(collection(db, "businesses"), (snap: QuerySnapshot<DocumentData>) => setBusinessCount(snap.size));
     
     // Action Center listener
     const unsubPending = onSnapshot(query(collection(db, "services"), where("verified", "==", false)), (snap: QuerySnapshot<DocumentData>) => {
@@ -128,25 +166,17 @@ function Dashboard() {
       unsubSos();
       unsubComm();
       unsubProv();
+      unsubPosts();
+      unsubBusinesses();
       unsubPending();
     }
   }, []);
 
-  const chartData = [
-    { name: 'Mon', users: userCount > 5 ? userCount - 5 : 0 },
-    { name: 'Tue', users: userCount > 4 ? userCount - 4 : 0 },
-    { name: 'Wed', users: userCount > 3 ? userCount - 3 : 0 },
-    { name: 'Thu', users: userCount > 2 ? userCount - 2 : 0 },
-    { name: 'Fri', users: userCount > 1 ? userCount - 1 : 0 },
-    { name: 'Sat', users: userCount },
-    { name: 'Sun', users: userCount + 2 },
-  ];
-
   const stats = [
-    { title: "Total Users", value: userCount.toString(), trend: "+12.5%", isUp: true },
+    { title: "Total Users", value: userCount.toString(), trend: "Real-time", isUp: true },
     { title: "Active SOS Alerts", value: sosCount.toString(), trend: "Live", isUp: false },
-    { title: "Communities", value: communityCount.toString(), trend: "+4.2%", isUp: true },
-    { title: "Verified Providers", value: verifiedProviderCount.toString(), trend: "+18.1%", isUp: true },
+    { title: "Total Posts", value: postCount.toString(), trend: "Live", isUp: true },
+    { title: "Total Businesses", value: businessCount.toString(), trend: "Live", isUp: true },
   ];
 
   return (
@@ -174,7 +204,7 @@ function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-card border border-border rounded-xl p-6 h-96 flex flex-col">
-          <h3 className="text-lg font-bold text-white mb-4">Growth Matrix</h3>
+          <h3 className="text-lg font-bold text-white mb-4">New Users (Last 7 Days)</h3>
           <div className="flex-1 rounded-lg flex items-center justify-center -ml-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
@@ -270,6 +300,8 @@ export default function App() {
               <Route path="/posts" element={<Posts />} />
               <Route path="/security" element={<Security />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/premium" element={<Premium />} />
               <Route path="*" element={
                 <div className="flex flex-col items-center justify-center h-full">
                   <h2 className="text-xl font-bold text-gray-400">Module under construction</h2>

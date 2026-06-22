@@ -7,7 +7,7 @@ import { useAppStore } from "@/store/appStore";
 import { UI } from "@/store/uiStore";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -24,13 +24,21 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// ─── Settings Row Component ──────────────────────────────────────────────────
+const T = {
+  bg: "#FFFFFF",
+  primary: "#FF385C", // Airbnb Coral
+  text: "#222222", // Airbnb Off-black
+  textSecondary: "#717171", // Airbnb Slate-gray
+  border: "#DDDDDD", // Airbnb border outline
+  separator: "#EBEBEB", // Airbnb divider
+};
+
+// ─── Settings Row Component (Airbnb Flat List Style) ────────────────────────
 function SettingRow({
   icon,
   label,
   value,
   type = "switch",
-  color = "#9CA3AF",
   onToggle,
   onPress,
   subtitle,
@@ -39,7 +47,6 @@ function SettingRow({
   label: string;
   value?: boolean | string;
   type?: "switch" | "link" | "value";
-  color?: string;
   onToggle?: (val: boolean) => void;
   onPress?: () => void;
   subtitle?: string;
@@ -51,36 +58,31 @@ function SettingRow({
       disabled={type === "switch" && !onPress}
       activeOpacity={0.7}
     >
-      <View
-        style={[
-          styles.settingIconBox,
-          { backgroundColor: color + "10", borderColor: color + "20" },
-        ]}
-      >
-        <Ionicons name={icon as any} size={18} color={color} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.settingLabel}>{label}</Text>
-        {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
+      <View style={styles.settingRowLeft}>
+        <Ionicons name={icon as any} size={22} color={T.text} style={styles.rowIcon} />
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={styles.settingLabel}>{label}</Text>
+          {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
+        </View>
       </View>
 
       {type === "switch" && (
         <Switch
           value={value as boolean}
           onValueChange={onToggle}
-          trackColor={{ false: "#E5E7EB", true: "#10B981" }}
+          trackColor={{ false: "#E5E7EB", true: T.primary }}
           thumbColor={"#FFFFFF"}
         />
       )}
 
       {type === "link" && (
-        <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+        <Ionicons name="chevron-forward" size={18} color="#717171" />
       )}
 
       {type === "value" && (
         <View style={styles.valueRow}>
           <Text style={styles.settingValueText}>{value}</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+          <Ionicons name="chevron-forward" size={18} color="#717171" />
         </View>
       )}
     </TouchableOpacity>
@@ -89,6 +91,7 @@ function SettingRow({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { section } = useLocalSearchParams<{ section?: string }>();
   const logout = useAppStore((state) => state.logout);
   const { t } = useTranslation();
   const currentUser = AuthService.getCurrentUser();
@@ -111,16 +114,15 @@ export default function SettingsScreen() {
   const [handle, setHandle] = useState("");
   const [bio, setBio] = useState("");
 
-  // ── Notification Preferences (all persisted to Firestore) ─────────────────
+  // ── Notification Preferences ──────────────────────────────────────────────
   const [pushNotifications, setPushNotifications] = useState(true);
   const [sosNotifications, setSosNotifications] = useState(true);
   const [chatNotifications, setChatNotifications] = useState(true);
   const [communityNotifications, setCommunityNotifications] = useState(true);
-  const [recommendationNotifications, setRecommendationNotifications] =
-    useState(true);
+  const [recommendationNotifications, setRecommendationNotifications] = useState(true);
   const [lostFoundNotifications, setLostFoundNotifications] = useState(true);
 
-  // ── Privacy Settings (all persisted to Firestore) ─────────────────────────
+  // ── Privacy Settings ──────────────────────────────────────────────────────
   const [profileVisible, setProfileVisible] = useState(true);
   const [activityVisible, setActivityVisible] = useState(true);
   const [locationVisible, setLocationVisible] = useState(true);
@@ -246,9 +248,7 @@ export default function SettingsScreen() {
     }
   };
 
-  // Removed individual toggle functions to batch save everything on handleSave
-
-  // ── Save Profile (Name + Handle + Bio) ────────────────────────────────────
+  // ── Save Profile (Name + Handle + Bio + Prefs) ────────────────────────────
   const handleSave = async () => {
     if (isSaving) return;
     if (!name.trim()) {
@@ -338,7 +338,6 @@ export default function SettingsScreen() {
           router.replace("/(auth)/login");
         } catch (error: any) {
           console.warn("Delete Account handled error:", error?.message || error);
-          // Handle the requirement to re-authenticate for sensitive operations
           if (
             error?.code === "auth/requires-recent-login" ||
             error?.message?.includes("recent-login")
@@ -365,35 +364,27 @@ export default function SettingsScreen() {
 
   if (isLoading) {
     return (
-      <View
-        style={[
-          styles.root,
-          { alignItems: "center", justifyContent: "center" },
-        ]}
-      >
-        <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-        <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={{ marginTop: 12, color: "#6B7280", fontSize: 13 }}>
-          Loading settings...
-        </Text>
+      <View style={[styles.root, { alignItems: "center", justifyContent: "center" }]}>
+        <StatusBar barStyle="dark-content" />
+        <ActivityIndicator size="small" color={T.primary} />
       </View>
     );
   }
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        {/* Header */}
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top"]}>
+        
+        {/* Header (Airbnb Clean Style) */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={styles.backBtn}
             activeOpacity={0.8}
           >
-            <Ionicons name="arrow-back" size={18} color="#4B5563" />
+            <Ionicons name="chevron-back" size={24} color={T.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t("settings", "Settings")}</Text>
           <TouchableOpacity
             onPress={handleSave}
             style={styles.saveBtn}
@@ -401,7 +392,7 @@ export default function SettingsScreen() {
             activeOpacity={0.8}
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color="#2563EB" />
+              <ActivityIndicator size="small" color={T.primary} />
             ) : (
               <Text style={styles.saveText}>{t("save", "Save")}</Text>
             )}
@@ -412,323 +403,309 @@ export default function SettingsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scroll}
         >
-          {/* ═══ Profile Edit Section ═══ */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {t("edit_profile", "EDIT PROFILE")}
+          {/* Page Title */}
+          <View style={styles.titleContainer}>
+            <Text style={styles.screenTitle}>
+              {!section ? t("settings", "Settings") : 
+                section === "personal" ? t("personal_info", "Personal Info") :
+                section === "security" ? t("login_security", "Login & Security") :
+                t("privacy_safety", "Privacy & Safety")
+              }
             </Text>
-            <View style={styles.card}>
+          </View>
+
+          {/* ─── Personal Info Section ─── */}
+          {(!section || section === "personal") && (
+            <>
+              {/* ─── Profile Avatar Edit (Airbnb Style underline text trigger) ─── */}
               <View style={styles.avatarSection}>
-                <View style={styles.avatarContainer}>
-                  <Image
-                    source={{
-                      uri:
-                        avatarUri ||
-                        "https://via.placeholder.com/150/E5E7EB/9CA3AF?text=?",
-                    }}
-                    style={styles.avatar}
-                  />
+            <View style={styles.avatarWrapper}>
+              <Image
+                source={{
+                  uri:
+                    avatarUri ||
+                    "https://ui-avatars.com/api/?name=Neighbor&background=F7F7F7&color=717171",
+                }}
+                style={styles.avatar}
+              />
+              <TouchableOpacity
+                style={styles.changePhotoBtn}
+                activeOpacity={0.7}
+                onPress={() =>
+                  showSheet(t("change_avatar", "Change Avatar"), [
+                    {
+                      label: t("take_photo", "Take Photo"),
+                      action: () => handlePickImage(true),
+                    },
+                    {
+                      label: t("choose_gallery", "Choose from Gallery"),
+                      action: () => handlePickImage(false),
+                    },
+                  ])
+                }
+              >
+                <Text style={styles.changePhotoText}>Change photo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* ─── Airbnb Card Inputs (Thin box with small top label inside) ─── */}
+          <View style={styles.formContainer}>
+            <Text style={styles.sectionTitle}>{t("edit_profile", "PROFILE INFO")}</Text>
+            
+            <View style={styles.airbnbInputBox}>
+              <Text style={styles.airbnbInputLabel}>{t("full_name", "Full Name")}</Text>
+              <TextInput
+                style={styles.airbnbInput}
+                value={name}
+                onChangeText={setName}
+                placeholderTextColor="#A0A0A0"
+              />
+            </View>
+
+            <View style={[styles.airbnbInputBox, { marginTop: 12 }]}>
+              <Text style={styles.airbnbInputLabel}>{t("handle", "Handle")}</Text>
+              <TextInput
+                style={styles.airbnbInput}
+                value={handle}
+                onChangeText={setHandle}
+                autoCapitalize="none"
+                placeholderTextColor="#A0A0A0"
+                placeholder="your_handle"
+              />
+            </View>
+
+            <View style={[styles.airbnbInputBox, { marginTop: 12, height: 100 }]}>
+              <Text style={styles.airbnbInputLabel}>{t("bio", "Bio")}</Text>
+              <TextInput
+                style={[styles.airbnbInput, { height: 60, textAlignVertical: "top" }]}
+                value={bio}
+                onChangeText={setBio}
+                multiline
+                numberOfLines={3}
+                maxLength={200}
+                placeholder="Tell your neighbours a bit about yourself..."
+                placeholderTextColor="#A0A0A0"
+              />
+              <Text style={styles.charCount}>{bio.length}/200</Text>
+            </View>
+          </View>
+          </>
+          )}
+
+          {/* ─── Security Section ─── */}
+          {(!section || section === "security") && (
+            <>
+              {/* ─── Notification Preferences ─── */}
+              <View style={styles.listContainer}>
+            <Text style={styles.sectionTitle}>{t("notifications", "NOTIFICATIONS")}</Text>
+            
+            <SettingRow
+              icon="notifications-outline"
+              label={t("push_notifications", "Push Notifications")}
+              subtitle="Master switch for all community alerts"
+              value={pushNotifications}
+              type="switch"
+              onToggle={setPushNotifications}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="alert-circle-outline"
+              label={t("sos_alerts", "SOS Alerts")}
+              subtitle="Critical emergency alerts from neighbors"
+              value={sosNotifications}
+              type="switch"
+              onToggle={setSosNotifications}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="chatbubble-outline"
+              label={t("chat_notifications", "Chat Messages")}
+              subtitle="Direct chats and room messages notifications"
+              value={chatNotifications}
+              type="switch"
+              onToggle={setChatNotifications}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="people-outline"
+              label={t("community_updates", "Community Updates")}
+              subtitle="Posts and events in your neighborhood feed"
+              value={communityNotifications}
+              type="switch"
+              onToggle={setCommunityNotifications}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="star-outline"
+              label={t("recommendations", "Recommendations")}
+              subtitle="Local business and service reviews"
+              value={recommendationNotifications}
+              type="switch"
+              onToggle={setRecommendationNotifications}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="search-outline"
+              label={t("lost_and_found", "Lost & Found")}
+              subtitle="Lost item posts and update matches"
+              value={lostFoundNotifications}
+              type="switch"
+              onToggle={setLostFoundNotifications}
+            />
+          </View>
+
+          {/* ─── Language Options ─── */}
+          <View style={styles.listContainer}>
+            <Text style={styles.sectionTitle}>{t("language", "LANGUAGE")}</Text>
+            <View style={styles.languageRow}>
+              <View style={styles.languageLeft}>
+                <Ionicons name="language-outline" size={22} color={T.text} />
+                <Text style={styles.settingLabel}>{t("language", "Language")}</Text>
+              </View>
+              <LanguageSwitcher />
+            </View>
+          </View>
+          </>
+          )}
+
+          {/* ─── Privacy & Safety Section ─── */}
+          {(!section || section === "privacy") && (
+            <>
+              {/* ─── Privacy Settings ─── */}
+              <View style={styles.listContainer}>
+            <Text style={styles.sectionTitle}>{t("privacy_safety", "PRIVACY & SAFETY")}</Text>
+            
+            <SettingRow
+              icon="eye-outline"
+              label={t("public_profile", "Public Profile")}
+              subtitle="Allow other neighbors to view your profile"
+              value={profileVisible}
+              type="switch"
+              onToggle={setProfileVisible}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="time-outline"
+              label={t("activity_visible", "Activity Visibility")}
+              subtitle="Show your latest actions to the neighborhood"
+              value={activityVisible}
+              type="switch"
+              onToggle={setActivityVisible}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="location-outline"
+              label={t("location_visible", "Precise Location")}
+              subtitle="Show pinpoint map location vs general community name"
+              value={locationVisible}
+              type="switch"
+              onToggle={setLocationVisible}
+            />
+            <View style={styles.menuSeparator} />
+
+            <SettingRow
+              icon="navigate-outline"
+              label={t("distance_visible", "Distance Visibility")}
+              subtitle="Display distance tag on your shared posts"
+              value={distanceVisible}
+              type="switch"
+              onToggle={setDistanceVisible}
+            />
+          </View>
+          </>
+          )}
+
+          {(!section || section === "security") && (
+            <>
+              {/* ─── Safety & Navigation Features ─── */}
+              <View style={styles.listContainer}>
+                <Text style={styles.sectionTitle}>{t("safety", "SAFETY")}</Text>
+                
+                <SettingRow
+                  icon="home-outline"
+                  label="Home Community"
+                  subtitle="Switch your permanent primary home neighborhood"
+                  type="link"
+                  onPress={() => {
+                    Alert.alert(
+                      "Change Home Community",
+                      "You are changing your permanent Home Community.\n\nYour Home Feed, Community Chat, Community Alerts, and future Community Notifications will switch to the new community.\n\nOnly continue if you have permanently relocated.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Continue",
+                          style: "destructive",
+                          onPress: () => router.push("/(auth)/community-setup" as any),
+                        },
+                      ],
+                    );
+                  }}
+                />
+                <View style={styles.menuSeparator} />
+
+                <SettingRow
+                  icon="shield-checkmark-outline"
+                  label={t("emergency_contacts", "Emergency Contacts")}
+                  subtitle={
+                    emergencyContactCount > 0
+                      ? `${emergencyContactCount} contact${emergencyContactCount > 1 ? "s" : ""} saved`
+                      : "Setup contacts for immediate SOS dispatch"
+                  }
+                  type="link"
+                  onPress={() => router.push("/settings/emergency-contacts" as any)}
+                />
+                <View style={styles.menuSeparator} />
+
+                <SettingRow
+                  icon="ban-outline"
+                  label={t("blocked_users", "Blocked Users")}
+                  subtitle={
+                    blockedUserCount > 0
+                      ? `${blockedUserCount} user${blockedUserCount > 1 ? "s" : ""} blocked`
+                      : "Manage list of blocked neighbor profiles"
+                  }
+                  type="link"
+                  onPress={() => router.push("/settings/blocked-users" as any)}
+                />
+              </View>
+
+              {/* ─── Logout link ─── */}
+              <View style={styles.footerContainer}>
+                <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+                  <Text style={styles.logoutText}>{t("log_out_devices", "Log out")}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* ─── Danger Zone Account Deletion ─── */}
+              <View style={styles.dangerZone}>
+                <Text style={styles.dangerTitle}>{t("danger_zone", "DANGER ZONE")}</Text>
+                <View style={styles.dangerCard}>
+                  <Text style={styles.dangerHeading}>Delete your account</Text>
+                  <Text style={styles.dangerSubText}>
+                    Permanently delete your profile, posts, messages, businesses, services, media, and all associated data. This action is irreversible.
+                  </Text>
                   <TouchableOpacity
-                    style={styles.editAvatarBtn}
-                    activeOpacity={0.85}
-                    onPress={() =>
-                      showSheet(t("change_avatar", "Change Avatar"), [
-                        {
-                          label: t("take_photo", "Take Photo"),
-                          action: () => handlePickImage(true),
-                        },
-                        {
-                          label: t("choose_gallery", "Choose from Gallery"),
-                          action: () => handlePickImage(false),
-                        },
-                      ])
-                    }
+                    style={styles.deleteBtn}
+                    onPress={handleDeleteAccount}
+                    activeOpacity={0.8}
                   >
-                    <Ionicons name="camera" size={14} color="#FFFFFF" />
+                    <Text style={styles.deleteBtnText}>Permanently Delete Account</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>
-                  {t("full_name", "Full Name")}
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t("handle", "Handle")}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={handle}
-                  onChangeText={setHandle}
-                  autoCapitalize="none"
-                  placeholderTextColor="#9CA3AF"
-                  placeholder="your_handle"
-                />
-              </View>
-
-              <View style={[styles.inputGroup, { marginBottom: 6 }]}>
-                <Text style={styles.inputLabel}>{t("bio", "Bio")}</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={bio}
-                  onChangeText={setBio}
-                  multiline
-                  numberOfLines={3}
-                  maxLength={200}
-                  placeholder="Tell your neighbours a bit about yourself..."
-                  placeholderTextColor="#9CA3AF"
-                />
-                <Text style={styles.charCount}>{bio.length}/200</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* ═══ Notification Preferences ═══ */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {t("notifications", "NOTIFICATIONS")}
-            </Text>
-            <View style={styles.card}>
-              <SettingRow
-                icon="notifications-outline"
-                label={t("push_notifications", "Push Notifications")}
-                subtitle="Master switch for all notifications"
-                value={pushNotifications}
-                type="switch"
-                color="#2563EB"
-                onToggle={setPushNotifications}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="alert-circle-outline"
-                label={t("sos_alerts", "SOS Alerts")}
-                subtitle="Emergency alerts in your area"
-                value={sosNotifications}
-                type="switch"
-                color="#EF4444"
-                onToggle={setSosNotifications}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="chatbubble-outline"
-                label={t("chat_notifications", "Chat Messages")}
-                subtitle="Direct and community messages"
-                value={chatNotifications}
-                type="switch"
-                color="#10B981"
-                onToggle={setChatNotifications}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="people-outline"
-                label={t("community_updates", "Community Updates")}
-                subtitle="Posts and activity in your area"
-                value={communityNotifications}
-                type="switch"
-                color="#F59E0B"
-                onToggle={setCommunityNotifications}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="star-outline"
-                label={t("recommendations", "Recommendations")}
-                subtitle="Local business and service suggestions"
-                value={recommendationNotifications}
-                type="switch"
-                color="#8B5CF6"
-                onToggle={setRecommendationNotifications}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="search-outline"
-                label={t("lost_and_found", "Lost & Found")}
-                subtitle="Lost and found item updates"
-                value={lostFoundNotifications}
-                type="switch"
-                color="#D97706"
-                onToggle={setLostFoundNotifications}
-              />
-            </View>
-          </View>
-
-          {/* ═══ Language ═══ */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("language", "LANGUAGE")}</Text>
-            <View style={styles.card}>
-              <View
-                style={[styles.settingRow, { justifyContent: "space-between" }]}
-              >
-                <View style={styles.settingRowLeft}>
-                  <View
-                    style={[
-                      styles.settingIconBox,
-                      {
-                        backgroundColor: "#F59E0B10",
-                        borderColor: "#F59E0B20",
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name="language-outline"
-                      size={18}
-                      color="#F59E0B"
-                    />
-                  </View>
-                  <Text style={styles.settingLabel}>
-                    {t("language", "Language")}
-                  </Text>
-                </View>
-                <LanguageSwitcher />
-              </View>
-            </View>
-          </View>
-
-          {/* ═══ Privacy & Safety ═══ */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {t("privacy_safety", "PRIVACY & SAFETY")}
-            </Text>
-            <View style={styles.card}>
-              <SettingRow
-                icon="eye-outline"
-                label={t("public_profile", "Public Profile")}
-                subtitle="Allow others to discover your profile"
-                value={profileVisible}
-                type="switch"
-                color="#8B5CF6"
-                onToggle={setProfileVisible}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="time-outline"
-                label={t("activity_visible", "Activity Visibility")}
-                subtitle="Show your recent activity to others"
-                value={activityVisible}
-                type="switch"
-                color="#6366F1"
-                onToggle={setActivityVisible}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="location-outline"
-                label={t("location_visible", "Precise Location")}
-                subtitle="Show exact location or community name only"
-                value={locationVisible}
-                type="switch"
-                color="#10B981"
-                onToggle={setLocationVisible}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="navigate-outline"
-                label={t("distance_visible", "Distance Visibility")}
-                subtitle="Show distance from you on posts"
-                value={distanceVisible}
-                type="switch"
-                color="#0EA5E9"
-                onToggle={setDistanceVisible}
-              />
-            </View>
-          </View>
-
-          {/* ═══ Safety Features ═══ */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("safety", "SAFETY")}</Text>
-            <View style={styles.card}>
-              <SettingRow
-                icon="shield-checkmark-outline"
-                label={t("emergency_contacts", "Emergency Contacts")}
-                subtitle={
-                  emergencyContactCount > 0
-                    ? `${emergencyContactCount} contact${emergencyContactCount > 1 ? "s" : ""} saved`
-                    : "Add contacts for emergencies"
-                }
-                type="link"
-                color="#EF4444"
-                onPress={() =>
-                  router.push("/settings/emergency-contacts" as any)
-                }
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                icon="ban-outline"
-                label={t("blocked_users", "Blocked Users")}
-                subtitle={
-                  blockedUserCount > 0
-                    ? `${blockedUserCount} user${blockedUserCount > 1 ? "s" : ""} blocked`
-                    : "No blocked users"
-                }
-                type="link"
-                color="#6B7280"
-                onPress={() => router.push("/settings/blocked-users" as any)}
-              />
-            </View>
-          </View>
-
-          {/* ═══ Logout ═══ */}
-          <TouchableOpacity
-            style={styles.logoutBtn}
-            onPress={handleLogout}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-            <Text style={styles.logoutText}>
-              {t("log_out_devices", "Log Out")}
-            </Text>
-          </TouchableOpacity>
-
-          {/* ═══ Danger Zone ═══ */}
-          <View style={[styles.section, { marginTop: 24 }]}>
-            <Text style={[styles.sectionTitle, { color: "#EF4444" }]}>
-              {t("danger_zone", "DANGER ZONE")}
-            </Text>
-            <View style={[styles.card, { borderColor: "#FECACA", backgroundColor: "#FEF2F2" }]}>
-              <View style={{ padding: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Ionicons name="warning" size={20} color="#EF4444" />
-                  <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: '800', color: "#991B1B" }}>
-                    Delete Account
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 13, color: "#991B1B", lineHeight: 18, marginBottom: 16, opacity: 0.9 }}>
-                  Permanently delete your profile, posts, messages, businesses, services, media, reputation, and all associated data. This action cannot be undone.
-                </Text>
-                
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "#EF4444",
-                    borderRadius: 12,
-                    paddingVertical: 14,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    shadowColor: "#EF4444",
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.2,
-                    shadowRadius: 8,
-                    elevation: 3,
-                  }}
-                  onPress={handleDeleteAccount}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="trash" size={18} color="#FFFFFF" />
-                  <Text style={{ color: "#FFFFFF", fontWeight: "800", marginLeft: 8, fontSize: 15 }}>
-                    Permanently Delete Account
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
+            </>
+          )}
 
           {/* Footer Info */}
-          <Text style={styles.footerText}>AasPaas v1.0.0 (Build 42)</Text>
+          <Text style={styles.footerText}>Neighborly v1.0.0 (Build 42)</Text>
         </ScrollView>
         <ActionSheet
           visible={sheet.visible}
@@ -744,164 +721,147 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: T.bg,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: "#FFFFFF",
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "800",
+    paddingVertical: 4,
+    paddingRight: 12,
   },
   saveBtn: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    backgroundColor: T.text,
+    borderRadius: 8,
+    minWidth: 64,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 64,
   },
   saveText: {
-    color: "#2563EB",
+    color: "#FFFFFF",
     fontWeight: "800",
-    fontSize: 12,
+    fontSize: 13,
   },
   scroll: {
-    paddingBottom: 40,
+    paddingBottom: 60,
   },
-  section: {
-    paddingHorizontal: 16,
-    marginBottom: 20,
+  titleContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  sectionTitle: {
-    fontSize: 10,
+  screenTitle: {
+    fontSize: 32,
     fontWeight: "800",
-    color: "#9CA3AF",
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    color: T.text,
+    letterSpacing: -0.8,
   },
   avatarSection: {
     alignItems: "center",
-    paddingVertical: 18,
+    marginVertical: 20,
   },
-  avatarContainer: {
-    position: "relative",
+  avatarWrapper: {
+    alignItems: "center",
+    gap: 8,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 2,
-    borderColor: "#2563EB",
-    backgroundColor: "#F3F4F6",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "#F7F7F7",
+    borderWidth: 1,
+    borderColor: T.border,
   },
-  editAvatarBtn: {
-    position: "absolute",
-    bottom: 0,
-    right: -4,
-    backgroundColor: "#2563EB",
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
+  changePhotoBtn: {
+    paddingVertical: 4,
   },
-  inputGroup: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#9CA3AF",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  input: {
-    height: 42,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 10,
-    paddingHorizontal: 12,
+  changePhotoText: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#111827",
+    fontWeight: "700",
+    color: T.text,
+    textDecorationLine: "underline",
   },
-  textArea: {
-    height: 70,
-    textAlignVertical: "top",
-    paddingTop: 10,
+  formContainer: {
+    paddingHorizontal: 24,
+    marginVertical: 12,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: T.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 16,
+  },
+  airbnbInputBox: {
+    borderWidth: 1,
+    borderColor: T.border,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#FFFFFF",
+    minHeight: 56,
+    justifyContent: "center",
+  },
+  airbnbInputLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: T.textSecondary,
+    marginBottom: 2,
+  },
+  airbnbInput: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: T.text,
+    padding: 0,
   },
   charCount: {
     fontSize: 10,
-    color: "#9CA3AF",
+    color: T.textSecondary,
     textAlign: "right",
-    marginTop: 4,
+    position: "absolute",
+    bottom: 8,
+    right: 12,
+  },
+  listContainer: {
+    marginVertical: 16,
+    paddingHorizontal: 24,
   },
   settingRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    justifyContent: "space-between",
+    paddingVertical: 16,
   },
   settingRowLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+    gap: 12,
   },
-  settingIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
+  rowIcon: {
+    width: 24,
+    textAlign: "center",
   },
   settingLabel: {
-    color: "#374151",
     fontSize: 15,
     fontWeight: "600",
-    flex: 1,
+    color: T.text,
   },
   settingSubtitle: {
-    color: "#6B7280",
     fontSize: 12,
-    fontWeight: "400",
+    color: T.textSecondary,
+    fontWeight: "500",
     marginTop: 2,
+    lineHeight: 16,
   },
   valueRow: {
     flexDirection: "row",
@@ -909,39 +869,90 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   settingValueText: {
-    color: "#9CA3AF",
-    fontSize: 12,
+    color: T.textSecondary,
+    fontSize: 13,
     fontWeight: "600",
   },
-  divider: {
+  menuSeparator: {
     height: 1,
-    backgroundColor: "#F3F4F6",
-    marginHorizontal: 16,
+    backgroundColor: T.separator,
   },
-  logoutBtn: {
-    marginHorizontal: 16,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-    backgroundColor: "#FEF2F2",
+  languageRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 20,
-    marginTop: 10,
+    justifyContent: "space-between",
+    paddingVertical: 16,
+  },
+  languageLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  footerContainer: {
+    paddingHorizontal: 24,
+    marginVertical: 16,
+  },
+  logoutBtn: {
+    paddingVertical: 8,
+    alignSelf: "flex-start",
   },
   logoutText: {
-    color: "#EF4444",
-    fontSize: 13,
+    color: T.text,
+    fontSize: 16,
     fontWeight: "800",
+    textDecorationLine: "underline",
+  },
+  dangerZone: {
+    marginVertical: 24,
+    paddingHorizontal: 24,
+  },
+  dangerTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: T.primary,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 16,
+  },
+  dangerCard: {
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 12,
+    padding: 18,
+    backgroundColor: "#FEF2F2",
+  },
+  dangerHeading: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#991B1B",
+    marginBottom: 6,
+  },
+  dangerSubText: {
+    fontSize: 13,
+    color: "#991B1B",
+    lineHeight: 18,
+    marginBottom: 16,
+    opacity: 0.9,
+    fontWeight: "500",
+  },
+  deleteBtn: {
+    backgroundColor: T.primary,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 14,
   },
   footerText: {
-    color: "#9CA3AF",
-    fontSize: 10,
+    color: T.textSecondary,
+    fontSize: 11,
     fontWeight: "600",
     textAlign: "center",
-    marginBottom: 24,
+    marginTop: 24,
+    marginBottom: 8,
   },
 });

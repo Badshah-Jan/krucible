@@ -2,7 +2,9 @@ import { AuthService } from "@/services/authService";
 import { LocationService } from "@/services/locationService";
 import { SOSAlert, SOSType, SosService } from "@/services/sosService";
 import { UserService } from "@/services/userService";
+import { TrustSafetyService } from "@/services/trustSafetyService";
 import { useAppStore } from "@/store/appStore";
+import SafetyBanner from "@/components/safety/SafetyBanner";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -81,6 +83,17 @@ export default function SOSScreen() {
     try {
       const user = AuthService.getCurrentUser();
       if (!user) throw new Error("Not authenticated");
+
+      // SOS Abuse Detection
+      const abuseCheck = await TrustSafetyService.checkSOSAbuse(user.uid);
+      if (!abuseCheck.allowed) {
+        Alert.alert("SOS Limit Reached", abuseCheck.message);
+        setIsCreating(false);
+        return;
+      }
+      if (abuseCheck.warning) {
+        Alert.alert("Warning", abuseCheck.message);
+      }
       const profile = await UserService.getOwnProfile(user.uid);
       
       const activeCommunityId = community?.communityId || profile?.communityId;
@@ -186,6 +199,7 @@ export default function SOSScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
+          <SafetyBanner type="sos" />
           <Text style={styles.heroTitle}>What is the emergency?</Text>
           
           <View style={styles.grid}>

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { Ban, Trash2, CheckCircle, Users as UsersIcon } from 'lucide-react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
+import { Ban, Trash2, CheckCircle, Users as UsersIcon, Search } from 'lucide-react';
 import type { QuerySnapshot, DocumentData, FirestoreError } from 'firebase/firestore';
 import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
@@ -18,6 +19,7 @@ interface User {
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -45,14 +47,27 @@ export default function Users() {
   };
 
   const deleteUserRecord = async (userId: string) => {
-    if (confirm("Are you sure you want to completely delete this user record? This action cannot be undone.")) {
+    if (confirm("Are you sure you want to completely delete this user record? This will delete their Auth account and Firestore document. This action cannot be undone.")) {
       try {
-        await deleteDoc(doc(db, "users", userId));
-      } catch (e) {
-        alert("Failed to delete user. Check permissions.");
+        const deleteUserFn = httpsCallable(functions, 'adminDeleteUser');
+        await deleteUserFn({ targetUid: userId });
+        alert("User completely deleted.");
+      } catch (e: any) {
+        console.error(e);
+        alert(`Failed to delete user: ${e.message || 'Check permissions'}`);
       }
     }
   };
+
+  const filteredUsers = useMemo(() => {
+    if (!searchQuery.trim()) return users;
+    const lowerQuery = searchQuery.toLowerCase();
+    return users.filter(u => 
+      u.name?.toLowerCase().includes(lowerQuery) || 
+      u.email?.toLowerCase().includes(lowerQuery) ||
+      u.id?.toLowerCase().includes(lowerQuery)
+    );
+  }, [users, searchQuery]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -60,6 +75,24 @@ export default function Users() {
         <h1 className="text-2xl font-bold text-white flex items-center"><UsersIcon className="w-6 h-6 mr-2 text-primary" /> User Management</h1>
         <div className="text-sm text-green-400 flex items-center">
           <div className="w-2 h-2 rounded-full bg-green-400 mr-2 animate-pulse"></div> Live Sync
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center mb-4">
+        <div className="relative w-96">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input 
+            type="text" 
+            placeholder="Search by name, email, or ID..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-card border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary transition-colors"
+          />
+        </div>
+        <div className="text-sm text-gray-400 flex space-x-4">
+          <span>Total: {users.length}</span>
+          <span>Active: {users.filter(u => !u.isBanned).length}</span>
+          <span>Banned: {users.filter(u => u.isBanned).length}</span>
         </div>
       </div>
 
@@ -79,9 +112,9 @@ export default function Users() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-400">Loading users...</td></tr>
-              ) : users.length === 0 ? (
+              ) : filteredUsers.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-400">No users found.</td></tr>
-              ) : users.map(u => (
+              ) : filteredUsers.map(u => (
                 <tr key={u.id} className="hover:bg-dark/50 transition-colors">
                   <td className="p-4 text-white font-medium flex items-center">
                     <div className="w-8 h-8 rounded-full bg-gray-600 mr-3 flex items-center justify-center text-xs">

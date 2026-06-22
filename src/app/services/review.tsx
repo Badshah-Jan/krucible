@@ -7,6 +7,7 @@ import Text from '@/components/common/Text';
 import Button from '@/components/common/Button';
 import ProviderService from '@/services/providerService';
 import { AuthService } from '@/services/authService';
+import { Colors } from '@/constants/colors';
 
 export default function WriteReviewScreen() {
   const router = useRouter();
@@ -99,7 +100,7 @@ export default function WriteReviewScreen() {
             title={loading ? "Submitting..." : "Submit Review"}
             onPress={handleSubmit}
             disabled={loading}
-            style={{ backgroundColor: '#4F46E5' }}
+            style={{ backgroundColor: Colors.primary }}
           />
         </View>
       </SafeAreaView>

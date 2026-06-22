@@ -1,33 +1,35 @@
 import React from 'react';
-import { Pressable, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Pressable, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
 import Text from './Text';
+import { Colors } from '@/constants/colors';
 
 interface ButtonProps {
   onPress: () => void;
   title: string;
-  variant?: 'gradient' | 'outline' | 'primary' | 'danger';
-  gradientColors?: [string, string, ...string[]];
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
   icon?: React.ReactNode;
   style?: ViewStyle;
   textStyle?: TextStyle;
   disabled?: boolean;
+  loading?: boolean;
+  size?: 'sm' | 'md' | 'lg';
 }
 
 export default function Button({
   onPress,
   title,
   variant = 'primary',
-  gradientColors = ['#2563EB', '#2563EB'],
   icon,
   style,
   textStyle,
   disabled = false,
+  loading = false,
+  size = 'lg',
 }: ButtonProps) {
   const scale = useSharedValue(1);
 
@@ -36,44 +38,31 @@ export default function Button({
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.96, { damping: 10, stiffness: 300 });
+    scale.value = withSpring(0.97, { damping: 15, stiffness: 400 });
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 10, stiffness: 300 });
+    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
   };
 
-  if (variant === 'gradient') {
-    return (
-      <Animated.View style={[animatedStyle, style]}>
-        <Pressable
-          onPress={onPress}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          disabled={disabled}
-          style={[styles.base, { opacity: disabled ? 0.5 : 1 }]}
-        >
-          <LinearGradient
-            colors={gradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientContainer}
-          >
-            {icon && icon}
-            <Text variant="bodyBold" style={[styles.text, textStyle]}>
-              {title}
-            </Text>
-          </LinearGradient>
-        </Pressable>
-      </Animated.View>
-    );
-  }
+  const sizeStyle = size === 'sm' ? styles.sizeSm : size === 'md' ? styles.sizeMd : styles.sizeLg;
+  const textSizeStyle = size === 'sm' ? styles.textSm : size === 'md' ? styles.textMd : styles.textLg;
 
-  const variantStyle = variant === 'outline'
-    ? styles.outline
-    : variant === 'danger'
-    ? styles.danger
-    : styles.primary;
+  const variantStyle = {
+    primary: styles.primary,
+    secondary: styles.secondary,
+    outline: styles.outline,
+    ghost: styles.ghost,
+    danger: styles.danger,
+  }[variant];
+
+  const textColorStyle = {
+    primary: styles.textWhite,
+    secondary: styles.textPrimary,
+    outline: styles.textPrimary,
+    ghost: styles.textPrimary,
+    danger: styles.textWhite,
+  }[variant];
 
   return (
     <Animated.View style={[animatedStyle, style]}>
@@ -81,13 +70,27 @@ export default function Button({
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        disabled={disabled}
-        style={[styles.base, variantStyle, { opacity: disabled ? 0.5 : 1 }]}
+        disabled={disabled || loading}
+        style={[
+          styles.base,
+          sizeStyle,
+          variantStyle,
+          (disabled || loading) && styles.disabled,
+        ]}
       >
-        {icon && icon}
-        <Text variant="bodyBold" style={[styles.text, textStyle]}>
-          {title}
-        </Text>
+        {loading ? (
+          <ActivityIndicator
+            size="small"
+            color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : Colors.primary}
+          />
+        ) : (
+          <>
+            {icon && icon}
+            <Text style={[styles.text, textSizeStyle, textColorStyle, textStyle]}>
+              {title}
+            </Text>
+          </>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -95,50 +98,31 @@ export default function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 50,
-    overflow: 'hidden',
-  },
-  gradientContainer: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
   },
+  sizeLg: { paddingVertical: 16, paddingHorizontal: 24 },
+  sizeMd: { paddingVertical: 13, paddingHorizontal: 20 },
+  sizeSm: { paddingVertical: 9, paddingHorizontal: 16 },
+
+  primary: { backgroundColor: Colors.primary },
+  secondary: { backgroundColor: Colors.primaryLight },
   outline: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
   },
-  primary: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#2563EB',
-  },
-  danger: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#EF4444',
-  },
-  text: {
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  ghost: { backgroundColor: 'transparent' },
+  danger: { backgroundColor: Colors.danger },
+  disabled: { opacity: 0.45 },
+
+  text: { fontWeight: '700', letterSpacing: -0.2 },
+  textLg: { fontSize: 16 },
+  textMd: { fontSize: 14 },
+  textSm: { fontSize: 13 },
+  textWhite: { color: '#FFFFFF' },
+  textPrimary: { color: Colors.primary },
 });

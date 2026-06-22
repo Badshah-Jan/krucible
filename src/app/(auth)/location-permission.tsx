@@ -109,50 +109,16 @@ export default function LocationPermissionScreen() {
       const pos = await LocationService.getCurrentLocation();
       const { latitude: lat, longitude: lng } = pos!;
 
-      const place = await LocationService.reverseGeocode(lat, lng);
-      if (!place) throw new Error('Geocode failed');
+      // Store current coordinates in Zustand (does not set primary community)
+      useAppStore.getState().setCurrentCoordinates({ lat, lng });
 
-      const currentUser = AuthService.getCurrentUser();
-      if (!currentUser) throw new Error('Not authenticated');
-
-      const { communityId, communityName } =
-        await CommunityService.assignUserToCommunity({
-          userId: currentUser.uid,
-          neighborhood: place.neighborhood,
-          district: place.district,
-          city: place.city,
-          country: place.country,
-          latitude: lat,
-          longitude: lng,
-        });
-
-      await UserService.updateUser(currentUser.uid, {
-        latitude: lat,
-        longitude: lng,
-        neighborhood: place.neighborhood,
-        area: place.neighborhood,
-        district: place.district,
-        city: place.city,
-        country: place.country,
-        communityId,
-      } as any);
-
-      const community: Community = {
-        name: communityName,
-        area: place.neighborhood,
-        district: place.district,
-        city: place.city,
-        country: place.country,
-        communityId,
-      };
-
-      setLocation({ lat, lng }, community);
-      setCommunityName(communityName);
+      setCommunityName('');
       setPhase('found');
 
+      // Route to community confirmation — user must explicitly confirm home
       setTimeout(() => {
-        router.replace('/(tabs)');
-      }, 2000);
+        router.replace('/(auth)/community-setup');
+      }, 1200);
 
     } catch (e: any) {
       const msg = e?.message ?? '';

@@ -10,13 +10,14 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
 
+import Text from "@/components/common/Text";
 import { useLocationGuard } from "@/hooks/useLocationGuard";
 import { useNotifications } from "@/hooks/useNotifications";
 import { AuthService } from "@/services/authService";
@@ -33,15 +34,15 @@ const PX = 16; // Standard padding
 const T = {
   bg: "#FFFFFF",
   card: "#FFFFFF",
-  text: "#111827",
-  textSecondary: "#6B7280",
-  border: "#F3F4F6",
-  primary: "#EF4444",
-  blue: "#3B82F6",
-  orange: "#F59E0B",
-  green: "#10B981",
+  text: "#222222", // Airbnb Off-black
+  textSecondary: "#717171", // Airbnb Slate-gray
+  border: "#EBEBEB", // Airbnb border divider
+  primary: "#FF385C", // Airbnb Coral
+  blue: "#008489", // Airbnb Teal/Blue
+  orange: "#FFB400", // Airbnb amber/orange
+  green: "#10B981", // Emerald green
   purple: "#8B5CF6",
-  surface: "#F9FAFB",
+  surface: "#F7F7F7", // Airbnb off-white
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -100,12 +101,11 @@ function SectionHeader({
 }
 
 // ─── Map Widget ───────────────────────────────────────────────────────────────
-// ─── Map Widget ───────────────────────────────────────────────────────────────
 function MapWidget({ lat, lng, area, users = [] }: { lat?: number; lng?: number; area: string, users?: any[] }) {
   if (!lat || !lng) {
     return (
       <View style={[s.mapWidget, { alignItems: "center", justifyContent: "center" }]}>
-        <Text style={{ color: T.textSecondary }}>Location required for map.</Text>
+        <Text style={{ color: T.textSecondary, fontWeight: "500" }}>Location required for map.</Text>
       </View>
     );
   }
@@ -119,13 +119,12 @@ function MapWidget({ lat, lng, area, users = [] }: { lat?: number; lng?: number;
         initialRegion={{
           latitude: lat,
           longitude: lng,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
+          latitudeDelta: 0.04,
+          longitudeDelta: 0.04,
         }}
         showsUserLocation={true}
         showsMyLocationButton={true}
       >
-        {/* Render other users in the community */}
         {users.map((u) => {
           if (!u.latitude || !u.longitude || u.uid === currentUserUid) return null;
           return (
@@ -134,11 +133,8 @@ function MapWidget({ lat, lng, area, users = [] }: { lat?: number; lng?: number;
               coordinate={{ latitude: u.latitude, longitude: u.longitude }}
               title={u.name}
               description={u.bio || "Neighbor"}
-            >
-              <View style={s.userMarker}>
-                <Ionicons name="person" size={14} color="#FFF" />
-              </View>
-            </Marker>
+              pinColor={T.primary}
+            />
           );
         })}
       </MapView>
@@ -155,23 +151,22 @@ function MapWidget({ lat, lng, area, users = [] }: { lat?: number; lng?: number;
 }
 
 // ─── Horizontal Cards ─────────────────────────────────────────────────────────
-
 function EmergencyCard({ item }: { item: any }) {
   const router = useRouter();
   return (
     <TouchableOpacity
-      style={[s.horizCard, { backgroundColor: T.card, borderColor: T.border }]}
+      style={s.horizCard}
       activeOpacity={0.9}
       onPress={() => router.push(`/sos/${item.originalId || item.id}` as any)}
     >
       <View style={s.hcHeader}>
-        <View style={[s.hcIconBox, { backgroundColor: "#FEF2F2" }]}>
+        <View style={[s.hcIconBox, { backgroundColor: "#FFF1F2" }]}>
           <Text style={{ fontSize: 10, fontWeight: "800", color: T.primary }}>SOS</Text>
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.hcTitle} numberOfLines={1}>{item.title}</Text>
           <View style={s.hcMetaRow}>
-            <Ionicons name="location-outline" size={10} color={T.textSecondary} />
+            <Ionicons name="location-outline" size={11} color={T.textSecondary} />
             <Text style={s.hcMetaText} numberOfLines={1}>{item.area || "Nearby"}</Text>
           </View>
         </View>
@@ -183,8 +178,8 @@ function EmergencyCard({ item }: { item: any }) {
             <Ionicons name="people" size={12} color={T.textSecondary} style={{ marginRight: 4 }} />
             <Text style={s.hcTimeText}>{item.commentsCount || 0}</Text>
           </View>
-          <View style={[s.hcBtn, { borderColor: T.border }]}>
-            <Text style={[s.hcBtnText, { color: T.primary }]}>Respond</Text>
+          <View style={[s.hcBtn, { borderColor: T.primary, backgroundColor: T.primary }]}>
+            <Text style={[s.hcBtnText, { color: "#FFFFFF" }]}>Respond</Text>
           </View>
         </View>
       </View>
@@ -196,18 +191,18 @@ function HelpCard({ item }: { item: any }) {
   const router = useRouter();
   return (
     <TouchableOpacity
-      style={[s.horizCard, { backgroundColor: T.card, borderColor: T.border }]}
+      style={s.horizCard}
       activeOpacity={0.9}
       onPress={() => router.push(`/post/${item.id}` as any)}
     >
       <View style={s.hcHeader}>
-        <View style={[s.hcIconBox, { backgroundColor: "#EFF6FF" }]}>
+        <View style={[s.hcIconBox, { backgroundColor: "#EBF8FF" }]}>
           <Ionicons name="hand-left" size={16} color={T.blue} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.hcTitle} numberOfLines={1}>{item.title}</Text>
           <View style={s.hcMetaRow}>
-            <Ionicons name="location-outline" size={10} color={T.textSecondary} />
+            <Ionicons name="location-outline" size={11} color={T.textSecondary} />
             <Text style={s.hcMetaText} numberOfLines={1}>{item.area || "Nearby"}</Text>
           </View>
         </View>
@@ -226,7 +221,7 @@ function LostFoundCard({ item }: { item: any }) {
   const router = useRouter();
   return (
     <TouchableOpacity
-      style={[s.horizCard, { backgroundColor: T.card, borderColor: T.border }]}
+      style={s.horizCard}
       activeOpacity={0.9}
       onPress={() => router.push(`/post/${item.id}` as any)}
     >
@@ -237,7 +232,7 @@ function LostFoundCard({ item }: { item: any }) {
         <View style={{ flex: 1 }}>
           <Text style={s.hcTitle} numberOfLines={1}>{item.title}</Text>
           <View style={s.hcMetaRow}>
-            <Ionicons name="location-outline" size={10} color={T.textSecondary} />
+            <Ionicons name="location-outline" size={11} color={T.textSecondary} />
             <Text style={s.hcMetaText} numberOfLines={1}>{item.area || "Nearby"}</Text>
           </View>
         </View>
@@ -331,7 +326,7 @@ function EmptyState({
 export default function NearbyScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const community = useAppStore((s) => s.community);
+  const community = useAppStore((s) => s.primaryCommunity);
   const coordinates = useAppStore((s) => s.coordinates);
   const authInitialized = useAppStore((s) => s.authInitialized);
   const { isGpsDisabled, openLocationSettings } = useLocationGuard();
@@ -351,56 +346,45 @@ export default function NearbyScreen() {
     return unsub;
   }, []);
 
-  useEffect(() => {
-    const cid = community?.communityId ?? userProfile?.communityId;
-    if (!authInitialized) return;
-    if (!cid) {
+  const loadNearbyData = async () => {
+    if (!coordinates?.lat || !coordinates?.lng) {
       setIsLoading(false);
       return;
     }
-
+    
     setIsLoading(true);
-
-    UserService.getUsersByCommunity(cid).then(users => {
+    try {
+      const users = await UserService.getUsersByRadius(coordinates.lat, coordinates.lng, radiusKm);
       setCommunityUsers(users);
-    });
 
-    const unsubPosts = PostService.subscribeToCommunityPosts(
-      cid,
-      coordinates?.lat,
-      coordinates?.lng,
-      (posts) => {
-        setLivePosts(
-          posts.map((p) => ({
-            ...p,
-            distance:
-              p.distanceLabel ??
-              (p.distanceKm != null ? `${p.distanceKm} km away` : undefined),
-            timePosted: getTimeAgo(p.createdAt),
-          })),
-        );
-        setIsLoading(false);
-      },
-      (err) => {
-        console.error("Nearby feed error:", err);
-        setIsLoading(false);
-      },
-    );
+      const posts = await PostService.getPostsByRadius(coordinates.lat, coordinates.lng, radiusKm, 7);
+      setLivePosts(
+        posts.map((p) => ({
+          ...p,
+          distance:
+            p.distanceLabel ??
+            (p.distanceKm != null ? `${p.distanceKm} km away` : undefined),
+          timePosted: getTimeAgo(p.createdAt),
+        })),
+      );
 
-    const unsubSos = SosService.subscribeToActiveSOS(cid, (alerts) => {
+      const alerts = await SosService.getActiveSOSByRadius(coordinates.lat, coordinates.lng, radiusKm);
       setActiveSosAlerts(alerts);
-    });
+    } catch (err) {
+      console.error("Nearby data load error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    return () => {
-      unsubPosts();
-      unsubSos();
-    };
+  useEffect(() => {
+    if (!authInitialized) return;
+    loadNearbyData();
   }, [
     authInitialized,
-    community?.communityId,
-    userProfile?.communityId,
     coordinates?.lat,
     coordinates?.lng,
+    radiusKm,
   ]);
 
   const sosItems = activeSosAlerts.map((alert) => {
@@ -448,11 +432,14 @@ export default function NearbyScreen() {
     return c === "lost & found" || c === "lost_found" || c === "lost";
   });
   
-  // Combine all for Activity timeline
   const activityTimeline = [...withinRadius]
     .sort((a, b) => {
-      const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-      const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+      const aTime = a.createdAt?.toDate 
+        ? a.createdAt.toDate().getTime() 
+        : (a.createdAt ? new Date(a.createdAt).getTime() : Date.now());
+      const bTime = b.createdAt?.toDate 
+        ? b.createdAt.toDate().getTime() 
+        : (b.createdAt ? new Date(b.createdAt).getTime() : Date.now());
       return bTime - aTime;
     })
     .slice(0, 10);
@@ -491,7 +478,8 @@ export default function NearbyScreen() {
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={T.bg} />
-      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#FFFFFF" }} edges={["top"]}>
+        
         {/* ── Header ── */}
         <View style={s.header}>
           <View style={s.headerLeft}>
@@ -561,8 +549,7 @@ export default function NearbyScreen() {
             <RefreshControl
               refreshing={isLoading}
               onRefresh={() => {
-                setIsLoading(true);
-                setTimeout(() => setIsLoading(false), 600);
+                loadNearbyData();
               }}
               colors={[T.primary]}
               tintColor={T.primary}
@@ -579,7 +566,7 @@ export default function NearbyScreen() {
           {emergencies.length > 0 && (
             <View style={s.section}>
               <SectionHeader
-                icon="alert"
+                icon="alert-circle"
                 label="Nearby emergencies"
                 onSeeAll={() => router.push("/" as any)}
               />
@@ -660,14 +647,6 @@ export default function NearbyScreen() {
             />
           )}
         </ScrollView>
-        
-        {/* Floating Action Button */}
-        <TouchableOpacity 
-          style={s.fab}
-          onPress={() => router.push("/search" as any)}
-        >
-          <Ionicons name="search" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
       </SafeAreaView>
     </View>
   );
@@ -676,8 +655,8 @@ export default function NearbyScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.bg },
-  scroll: { paddingBottom: 110 },
-  section: { marginBottom: 20 },
+  scroll: { paddingTop: 16, paddingBottom: 80 },
+  section: { marginBottom: 28 },
   center: {
     alignItems: "center",
     justifyContent: "center",
@@ -690,9 +669,10 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
+    backgroundColor: "#FFFFFF",
   },
   headerLeft: {
     flexDirection: "row",
@@ -701,26 +681,28 @@ const s = StyleSheet.create({
     marginRight: 8,
   },
   pinCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FEF2F2",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#FFF1F2",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FFE4E6",
   },
   headerTitle: {
     color: T.text,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
-  headerSub: { color: T.textSecondary, fontSize: 13, marginTop: 2 },
+  headerSub: { color: T.textSecondary, fontSize: 13, marginTop: 2, fontWeight: "500" },
   headerRight: { flexDirection: "row", gap: 8 },
   circleBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: T.bg,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#F7F7F7",
     borderWidth: 1,
     borderColor: T.border,
     alignItems: "center",
@@ -745,39 +727,40 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: PX,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   sectionLeft: { flexDirection: "row", alignItems: "center" },
   sectionTitle: {
     color: T.text,
     fontSize: 16,
     fontWeight: "800",
+    letterSpacing: -0.3,
   },
-  seeAllText: { color: T.text, fontSize: 13, fontWeight: "700" },
+  seeAllText: { color: T.primary, fontSize: 13, fontWeight: "700" },
 
   // Radius chips
   radiusRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     paddingBottom: 16,
     gap: 8,
   },
   radiusChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 100,
     borderWidth: 1,
     borderColor: T.border,
     backgroundColor: T.card,
   },
-  radiusChipActive: { backgroundColor: T.text, borderColor: T.text },
-  radiusChipText: { fontSize: 12, fontWeight: "600", color: T.textSecondary },
+  radiusChipActive: { backgroundColor: T.primary, borderColor: T.primary },
+  radiusChipText: { fontSize: 12, fontWeight: "700", color: T.textSecondary },
   myLocBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 100,
     borderWidth: 1,
     borderColor: T.border,
@@ -787,12 +770,15 @@ const s = StyleSheet.create({
 
   // Map Widget
   mapWidget: {
-    height: 180,
+    height: 220,
     marginHorizontal: PX,
+    marginBottom: 36,
     borderRadius: 20,
     backgroundColor: T.border,
     overflow: "hidden",
     position: "relative",
+    borderWidth: 1,
+    borderColor: T.border,
   },
   userMarker: {
     width: 28,
@@ -821,101 +807,19 @@ const s = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  mapBgInner: {
-    height: 160,
-    backgroundColor: "#F9FAFB", // map placeholder color
-    position: "relative",
-    overflow: "hidden",
-  },
-  mapPin: {
-    position: "absolute",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    backgroundColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  userLocPulseOuter: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    width: 100,
-    height: 100,
-    marginLeft: -50,
-    marginTop: -50,
-    borderRadius: 50,
-    backgroundColor: "rgba(17, 24, 39, 0.05)",
-  },
-  userLocPulseInner: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    width: 60,
-    height: 60,
-    marginLeft: -30,
-    marginTop: -30,
-    borderRadius: 30,
-    backgroundColor: "rgba(17, 24, 39, 0.1)",
-  },
-  userLocDot: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    width: 16,
-    height: 16,
-    marginLeft: -8,
-    marginTop: -8,
-    borderRadius: 8,
-    backgroundColor: T.text,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-  },
-  userLocTooltip: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    marginLeft: -35,
-    marginTop: -35,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  userLocTooltipText: { color: T.text, fontSize: 10, fontWeight: "700" },
-  mapLegend: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#FFFFFF",
-  },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { color: T.textSecondary, fontSize: 10, fontWeight: "600" },
 
   // Horizontal Cards
   horizCard: {
-    width: width * 0.7,
+    width: width * 0.72,
     backgroundColor: T.card,
     borderRadius: 16,
     borderWidth: 1,
+    borderColor: T.border,
     padding: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
     elevation: 1,
   },
   hcHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
@@ -927,17 +831,18 @@ const s = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-  hcTitle: { color: T.text, fontSize: 14, fontWeight: "700", marginBottom: 4 },
+  hcTitle: { color: T.text, fontSize: 15, fontWeight: "700", marginBottom: 4 },
   hcMetaRow: { flexDirection: "row", alignItems: "center" },
-  hcMetaText: { color: T.textSecondary, fontSize: 11, marginLeft: 4 },
+  hcMetaText: { color: T.textSecondary, fontSize: 12, marginLeft: 4, fontWeight: "500" },
   hcFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  hcTimeText: { color: T.textSecondary, fontSize: 11, fontWeight: "500" },
-  hcRespondText: { color: T.textSecondary, fontSize: 11, fontWeight: "600" },
+  hcTimeText: { color: T.textSecondary, fontSize: 12, fontWeight: "500" },
+  hcRespondText: { color: T.textSecondary, fontSize: 12, fontWeight: "600" },
   hcBtn: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 100,
     borderWidth: 1,
+    borderColor: T.border,
   },
   hcBtnText: { fontSize: 11, fontWeight: "700" },
 
@@ -956,7 +861,7 @@ const s = StyleSheet.create({
   tlLine: { width: 2, flex: 1, marginTop: -4, marginBottom: -4, zIndex: 1 },
   tlContent: { flex: 1, flexDirection: "row", paddingLeft: 12, paddingBottom: 16 },
   tlTitle: { color: T.text, fontSize: 14, fontWeight: "700", marginBottom: 2 },
-  tlSub: { color: T.textSecondary, fontSize: 12 },
+  tlSub: { color: T.textSecondary, fontSize: 12, fontWeight: "500" },
   tlDist: { color: T.textSecondary, fontSize: 11, fontWeight: "600", marginBottom: 2 },
   tlTime: { fontSize: 11, fontWeight: "700" },
 
@@ -1005,22 +910,4 @@ const s = StyleSheet.create({
     borderRadius: 100,
   },
   stateBtnText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
-
-  // FAB
-  fab: {
-    position: "absolute",
-    bottom: 20,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: T.text,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: T.text,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
 });

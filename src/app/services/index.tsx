@@ -9,6 +9,7 @@ import Text from '@/components/common/Text';
 import ProviderService, { CATEGORIES, ServiceProvider } from '@/services/providerService';
 import { useAppStore } from '@/store/appStore';
 import { AuthService } from '@/services/authService';
+import { Colors } from '@/constants/colors';
 
 export default function ServicesMarketplaceScreen() {
   const router = useRouter();
@@ -115,7 +116,7 @@ export default function ServicesMarketplaceScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll} contentContainerStyle={{ gap: 10 }}>
                 <TouchableOpacity onPress={() => setSelectedCategory('All')} activeOpacity={0.7}>
                   {selectedCategory === 'All' ? (
-                    <LinearGradient colors={["#4F46E5", "#3730A3"]} style={styles.catBtnActive} start={{x:0, y:0}} end={{x:1, y:0}}>
+                    <LinearGradient colors={[Colors.primary, Colors.primaryMid]} style={styles.catBtnActive} start={{x:0, y:0}} end={{x:1, y:0}}>
                       <Text style={styles.catTextActive}>All</Text>
                     </LinearGradient>
                   ) : (
@@ -129,7 +130,7 @@ export default function ServicesMarketplaceScreen() {
                   return (
                     <TouchableOpacity key={cat} onPress={() => setSelectedCategory(cat)} activeOpacity={0.7}>
                       {isActive ? (
-                        <LinearGradient colors={["#4F46E5", "#3730A3"]} style={styles.catBtnActive} start={{x:0, y:0}} end={{x:1, y:0}}>
+                        <LinearGradient colors={[Colors.primary, Colors.primaryMid]} style={styles.catBtnActive} start={{x:0, y:0}} end={{x:1, y:0}}>
                           <Text style={styles.catTextActive}>{cat}</Text>
                         </LinearGradient>
                       ) : (
@@ -141,14 +142,14 @@ export default function ServicesMarketplaceScreen() {
                   );
                 })}
               </ScrollView>
-              {loading && <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 50 }} />}
+              {loading && <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 50 }} />}
             </>
           }
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyState}>
                 <View style={styles.emptyIconBox}>
-                  <Ionicons name="construct" size={48} color="#4F46E5" />
+                  <Ionicons name="construct" size={48} color={Colors.primary} />
                 </View>
                 <Text style={styles.emptyTitle}>No Providers Found</Text>
                 <Text style={styles.emptySub}>We couldn't find any services matching your criteria.</Text>
@@ -164,7 +165,7 @@ export default function ServicesMarketplaceScreen() {
             activeOpacity={0.9}
             onPress={() => router.push('/services/register' as any)}
           >
-            <LinearGradient colors={["#4F46E5", "#3730A3"]} style={styles.fabGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+            <LinearGradient colors={[Colors.primary, Colors.primaryMid]} style={styles.fabGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
               <Ionicons name="briefcase" size={20} color="#FFFFFF" />
               <Text style={styles.fabText}>Offer a Service</Text>
             </LinearGradient>
@@ -220,7 +221,7 @@ const ServiceCardContent = React.memo(({ provider, isPremium, onCall, onWhatsApp
     <View>
       <View style={styles.providerHeader}>
         <View style={styles.avatar}>
-          <Ionicons name="person" size={24} color="#4F46E5" />
+          <Ionicons name="person" size={24} color={Colors.primary} />
           {provider.isAvailable && <View style={styles.onlineDot} />}
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
@@ -257,7 +258,7 @@ const ServiceCardContent = React.memo(({ provider, isPremium, onCall, onWhatsApp
             style={[styles.actionBtn, isPremium && { backgroundColor: "#FEF3C7", borderColor: "#FDE68A" }]} 
             onPress={() => onCall(provider.phone)}
           >
-            <Ionicons name="call" size={14} color={isPremium ? "#D97706" : "#4F46E5"} style={{ marginRight: 6 }} />
+            <Ionicons name="call" size={14} color={isPremium ? "#D97706" : Colors.primary} style={{ marginRight: 6 }} />
             <Text style={[styles.actionBtnText, isPremium && { color: "#D97706" }]}>Call</Text>
           </TouchableOpacity>
         </View>
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
   
   categoriesScroll: { paddingHorizontal: 16, paddingBottom: 16, marginBottom: 8 },
   catBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB" },
-  catBtnActive: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, shadowColor: "#4F46E5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  catBtnActive: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 100, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   catText: { fontSize: 14, fontWeight: "600", color: "#6B7280" },
   catTextActive: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
   
@@ -301,11 +302,11 @@ const styles = StyleSheet.create({
   providerAbout: { fontSize: 14, color: '#4B5563', lineHeight: 22, marginBottom: 16 },
   
   actionRow: { flexDirection: "row", gap: 12 },
-  actionBtn: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 100, backgroundColor: "#EEF2FF", borderWidth: 1, borderColor: "#E0E7FF" },
-  actionBtnText: { fontSize: 13, fontWeight: "700", color: "#4F46E5" },
+  actionBtn: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 100, backgroundColor: Colors.primaryLight, borderWidth: 1, borderColor: "#E0E7FF" },
+  actionBtnText: { fontSize: 13, fontWeight: "700", color: Colors.primary },
   
   emptyState: { alignItems: 'center', justifyContent: 'center', padding: 40, paddingTop: 60 },
-  emptyIconBox: { width: 96, height: 96, borderRadius: 48, backgroundColor: "#EEF2FF", alignItems: "center", justifyContent: "center", marginBottom: 24 },
+  emptyIconBox: { width: 96, height: 96, borderRadius: 48, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginBottom: 24 },
   emptyTitle: { fontSize: 20, fontWeight: '800', color: '#111827', marginTop: 12 },
   emptySub: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginTop: 8, lineHeight: 24 },
   

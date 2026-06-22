@@ -6,23 +6,17 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
-  ActivityIndicator,
+  AppState,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ExpoLocation from 'expo-location';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  FadeIn,
-  FadeOut,
-} from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { useAppStore } from '@/store/appStore';
+import { LocationMonitorService } from '@/services/locationMonitorService';
 
 export default function LocationBanner() {
   const isGpsDisabled = useAppStore((state) => state.isGpsDisabled);
-  const setGpsDisabled = useAppStore((state) => state.setGpsDisabled);
 
   const handleEnable = async () => {
     if (Platform.OS === 'android') {
@@ -36,54 +30,83 @@ export default function LocationBanner() {
     }
   };
 
-  // Auto-dismiss when GPS returns
+  const checkGpsStatus = async () => {
+    try {
+      const on = await ExpoLocation.hasServicesEnabledAsync();
+      if (on) {
+        // Automatically recover and hide banner via the service
+        LocationMonitorService.checkLocationState();
+      }
+    } catch (_) {}
+  };
+
+  // Auto-dismiss when GPS returns via AppState change or interval
   useEffect(() => {
     if (!isGpsDisabled) return;
-    const id = setInterval(async () => {
-      try {
-        const on = await ExpoLocation.hasServicesEnabledAsync();
-        if (on) setGpsDisabled(false);
-      } catch (_) {}
-    }, 2000);
-    return () => clearInterval(id);
+    
+    // 1. AppState listener (immediate detection when app returns from background settings)
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkGpsStatus();
+      }
+    });
+
+    // 2. Fallback Interval (detects if user turns on GPS via quick settings drawer without leaving app)
+    const interval = setInterval(() => {
+      checkGpsStatus();
+    }, 5000); // Check every 5 seconds while banner is visible
+
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
   }, [isGpsDisabled]);
 
   if (!isGpsDisabled) return null;
 
   return (
-    <Animated.View 
-      entering={FadeIn.duration(300)} 
-      exiting={FadeOut.duration(300)}
-      style={styles.wrapper}
+    <Modal
+      visible={isGpsDisabled}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => {
+        // Explicitly do nothing to prevent hardware back button dismissal
+      }}
     >
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.95)' }]} />
-      )}
-      
-      <View style={styles.content}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="location" size={48} color="#EF4444" />
-        </View>
+      <View style={styles.wrapper}>
+        {Platform.OS === 'ios' ? (
+          <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.95)' }]} />
+        )}
+        
+        <View style={styles.content}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="location" size={48} color="#EF4444" />
+          </View>
 
-        <Text style={styles.title}>Location Required</Text>
-        <Text style={styles.subtitle}>
-          Neighborly requires an active GPS connection to keep the community safe.
-          You cannot browse, post, or chat while your location is disabled.
-        </Text>
+          <Text style={styles.title}>Location Required</Text>
+          <Text style={styles.subtitle}>
+            Neighborly requires an active GPS connection to keep the community safe.
+            You cannot browse, post, or chat while your location is disabled.
+          </Text>
 
-        <TouchableOpacity style={styles.enableBtn} onPress={handleEnable} activeOpacity={0.85}>
-          <Ionicons name="settings" size={18} color="#FFFFFF" />
-          <Text style={styles.enableBtnText}>Enable Location Settings</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.enableBtn} onPress={handleEnable} activeOpacity={0.85}>
+            <Ionicons name="settings" size={18} color="#FFFFFF" />
+            <Text style={styles.enableBtnText}>Enable Location Settings</Text>
+          </TouchableOpacity>
 
-        <View style={styles.waitingRow}>
-          <ActivityIndicator size="small" color="#9CA3AF" />
-          <Text style={styles.waitingText}>Waiting for GPS signal...</Text>
+          <TouchableOpacity 
+            style={styles.refreshRow} 
+            activeOpacity={0.7}
+            onPress={checkGpsStatus}
+          >
+            <Ionicons name="refresh" size={16} color="#9CA3AF" />
+            <Text style={styles.waitingText}>I've enabled it (Refresh)</Text>
+          </TouchableOpacity>
         </View>
       </View>
-    </Animated.View>
+    </Modal>
   );
 }
 
@@ -140,11 +163,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  waitingRow: {
+  refreshRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginTop: 24,
+    padding: 8,
   },
   waitingText: {
     color: '#6B7280',

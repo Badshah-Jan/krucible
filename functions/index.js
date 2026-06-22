@@ -207,6 +207,16 @@ exports.requestPremiumUpgrade = onCall(async (request) => {
     throw new HttpsError("already-exists", "Already premium.");
   }
 
+  // Check for existing pending request
+  const pendingSnap = await db.collection("subscription_requests")
+    .where("entityId", "==", entityId)
+    .where("status", "==", "pending")
+    .get();
+
+  if (!pendingSnap.empty) {
+    throw new HttpsError("already-exists", "A pending premium request already exists for this listing.");
+  }
+
   await db.collection("subscription_requests").add({
     userId: request.auth.uid,
     entityType,
@@ -399,3 +409,84 @@ exports.deleteCloudinaryImage = onCall(
     return { ok: true };
   },
 );
+
+// ─── Admin: delete user account completely ─────────────────────────────────
+exports.adminDeleteUser = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+  if (callerDoc.data()?.role !== "admin") {
+    throw new HttpsError("permission-denied", "Admin access required.");
+  }
+
+  const { targetUid } = request.data || {};
+  if (!targetUid) {
+    throw new HttpsError("invalid-argument", "targetUid is required.");
+  }
+
+  if (targetUid === request.auth.uid) {
+    throw new HttpsError("invalid-argument", "Cannot delete yourself via admin panel.");
+  }
+
+  try {
+    const userDocRef = db.collection("users").doc(targetUid);
+    const userSnap = await userDocRef.get();
+    
+    if (userSnap.exists) {
+      const userData = userSnap.data();
+      // Remove from community
+      if (userData.communityId) {
+        const commRef = db.collection("communities").doc(userData.communityId);
+        await commRef.update({
+          memberCount: admin.firestore.FieldValue.increment(-1)
+        }).catch(err => console.error("Error decrementing community memberCount", err));
+      }
+    }
+
+    const deletePromises = [];
+
+    // Delete posts
+    const postsSnap = await db.collection("posts").where("userId", "==", targetUid).get();
+    postsSnap.forEach(doc => {
+      deletePromises.push(doc.ref.delete());
+    });
+
+    // Delete services
+    const servicesSnap = await db.collection("services").where("userId", "==", targetUid).get();
+    servicesSnap.forEach(doc => {
+      deletePromises.push(doc.ref.delete());
+    });
+
+    // Delete businesses
+    const businessesSnap = await db.collection("businesses").where("userId", "==", targetUid).get();
+    businessesSnap.forEach(doc => {
+      deletePromises.push(doc.ref.delete());
+    });
+
+    await Promise.all(deletePromises);
+
+  } catch (error) {
+    console.error(`Error deleting user data for ${targetUid}:`, error);
+  }
+
+  try {
+    // 1. Delete from Firebase Auth
+    await admin.auth().deleteUser(targetUid);
+  } catch (error) {
+    console.error(`Error deleting user auth ${targetUid}:`, error);
+    // If user is already deleted from Auth, we can still proceed to delete from DB
+  }
+
+  // 2. Delete from Firestore
+  try {
+    await db.collection("users").doc(targetUid).delete();
+  } catch (error) {
+    console.error(`Error deleting user doc ${targetUid}:`, error);
+  }
+
+  await logEvent(request.auth.uid, "admin_deleted_user", { targetUid });
+
+  return { ok: true };
+});

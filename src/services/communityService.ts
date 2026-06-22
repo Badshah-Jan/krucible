@@ -11,56 +11,34 @@ import {
 
 // ─── Community Document (Firestore: /communities/{communityId}) ───────────────
 export interface CommunityDoc {
-  id: string;           // slug e.g. "gulshan-iqbal"
-  name: string;         // display e.g. "Gulshan-e-Iqbal"
+  id: string;
+  name: string;
   district: string;
   city: string;
   country: string;
   centerLat: number;
   centerLng: number;
   memberCount: number;
-  radiusKm: number;     // default 5 km
+  radiusKm: number;
   createdAt: any;
   updatedAt: any;
 }
 
 // ─── Slug Generator ────────────────────────────────────────────────────────────
-/**
- * Convert a raw place name into a clean, URL-safe community ID.
- *
- * Examples:
- *   "Gulshan-e-Iqbal"  → "gulshan-iqbal"
- *   "DHA Phase 6"      → "dha-phase-6"
- *   "Camden"           → "camden"
- *   "Manhattan"        → "manhattan"
- *   "Block 13"         → "block-13"
- */
 export function generateCommunitySlug(district: string, city: string): string {
   const raw = district && district !== city ? district : city;
-
   return raw
     .toLowerCase()
-    // Remove common filler words (articles, prepositions) that pad slugs
     .replace(/\b(e|al|ul|el|de|the|of|and|&)\b/g, '')
-    // Replace non-alphanumeric with dashes
     .replace(/[^a-z0-9]+/g, '-')
-    // Collapse multiple dashes
     .replace(/-{2,}/g, '-')
-    // Trim leading/trailing dashes
     .replace(/^-|-$/g, '');
 }
 
-/**
- * Generate the human-readable community display name.
- *
- * Examples:
- *   district = "Gulshan-e-Iqbal", city = "Karachi"  → "Gulshan-e-Iqbal"
- *   district = "Karachi",         city = "Karachi"   → "Karachi"
- */
 export function generateCommunityName(
   district: string,
   neighborhood: string,
-  city: string
+  city: string,
 ): string {
   if (district && district !== city) return district;
   if (neighborhood && neighborhood !== city) return neighborhood;
@@ -71,15 +49,51 @@ export function generateCommunityName(
 export class CommunityService {
 
   /**
-   * Core assignment pipeline.
-   * - Builds the communityId slug and display name from location data.
-   * - Creates the Firestore /communities/{slug} document if new.
-   * - Updates memberCount (idempotent — just increments on every new location save).
-   * - Writes communityId + communityName back to the user document.
-   *
-   * Returns the resolved { communityId, communityName } for use in Zustand.
+   * Ensure the community document exists and is up to date.
+   * Does NOT write communityId to the user document.
+   * Call this before confirming a primary community.
    */
-  static async assignUserToCommunity(params: {
+  static async ensureCommunityExists(params: {
+    neighborhood: string;
+    district: string;
+    city: string;
+    country: string;
+    latitude: number;
+    longitude: number;
+  }): Promise<{ communityId: string; communityName: string }> {
+    const { neighborhood, district, city, country, latitude, longitude } = params;
+
+    const communityId = generateCommunitySlug(district, city);
+    const communityName = generateCommunityName(district, neighborhood, city);
+
+    const communityRef = doc(db, 'communities', communityId);
+    const communitySnap = await getDoc(communityRef);
+
+    if (!communitySnap.exists()) {
+      await setDoc(communityRef, {
+        id: communityId,
+        name: communityName,
+        district,
+        city,
+        country,
+        centerLat: latitude,
+        centerLng: longitude,
+        memberCount: 0,
+        radiusKm: 5,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return { communityId, communityName };
+  }
+
+  /**
+   * Permanently confirm a user's primary community.
+   * Called only when the user explicitly taps "Yes, this is my home".
+   * Increments memberCount and writes primaryCommunityId to the user doc.
+   */
+  static async confirmPrimaryCommunity(params: {
     userId: string;
     neighborhood: string;
     district: string;
@@ -96,13 +110,14 @@ export class CommunityService {
     try {
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
-      const oldCommunityId = userSnap.exists() ? userSnap.data().communityId : null;
+      const existingPrimaryId = userSnap.exists()
+        ? (userSnap.data().primaryCommunityId ?? userSnap.data().communityId ?? null)
+        : null;
 
       const communityRef = doc(db, 'communities', communityId);
       const communitySnap = await getDoc(communityRef);
 
       if (!communitySnap.exists()) {
-        // First member — create the community document
         await setDoc(communityRef, {
           id: communityId,
           name: communityName,
@@ -116,48 +131,51 @@ export class CommunityService {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-      } else if (oldCommunityId !== communityId) {
-        // Community already exists AND user is new to it — bump memberCount + timestamp
+      } else if (existingPrimaryId !== communityId) {
         await updateDoc(communityRef, {
           memberCount: increment(1),
           updatedAt: serverTimestamp(),
         });
       }
 
-      // Decrement old community's member count if the user is switching communities
-      if (oldCommunityId && oldCommunityId !== communityId) {
+      // Decrement old primary community if switching
+      if (existingPrimaryId && existingPrimaryId !== communityId) {
         try {
-          const oldRef = doc(db, 'communities', oldCommunityId);
-          await updateDoc(oldRef, {
+          await updateDoc(doc(db, 'communities', existingPrimaryId), {
             memberCount: increment(-1),
             updatedAt: serverTimestamp(),
           });
-        } catch (e) {
-          // Non-fatal
-        }
+        } catch (_) {}
       }
 
-      // Persist communityId on the user document
-      await setDoc(userRef, {
-        communityId,
-        communityName,
-        lastActive: serverTimestamp(),
-      }, { merge: true });
+      // Write primary community fields to user document
+      await setDoc(
+        userRef,
+        {
+          primaryCommunityId: communityId,
+          primaryCommunityName: communityName,
+          communityConfirmedAt: serverTimestamp(),
+          // Keep legacy communityId in sync for backward-compat reads
+          communityId,
+          communityName,
+          lastActive: serverTimestamp(),
+        },
+        { merge: true },
+      );
 
       return { communityId, communityName };
     } catch (error) {
-      console.error('CommunityService.assignUserToCommunity error:', error);
+      console.error('CommunityService.confirmPrimaryCommunity error:', error);
       throw error;
     }
   }
 
   /**
-   * Re-assign a user when their location has permanently changed.
-   * Decrements the old community's memberCount, then calls assignUserToCommunity.
+   * Allow a user to voluntarily change their primary community.
+   * Requires explicit user intent — never called automatically.
    */
-  static async updateUserCommunity(params: {
+  static async changePrimaryCommunity(params: {
     userId: string;
-    oldCommunityId: string | undefined;
     neighborhood: string;
     district: string;
     city: string;
@@ -165,10 +183,41 @@ export class CommunityService {
     latitude: number;
     longitude: number;
   }): Promise<{ communityId: string; communityName: string }> {
-    const { oldCommunityId, ...rest } = params;
-    // assignUserToCommunity now automatically handles decrementing old communities
-    // based on the database state, so we just pass it through.
-    return this.assignUserToCommunity(rest);
+    return this.confirmPrimaryCommunity(params);
+  }
+
+  /**
+   * @deprecated Use confirmPrimaryCommunity for new code.
+   * Kept for backward compatibility with screens not yet migrated.
+   * Internally calls confirmPrimaryCommunity so behaviour is safe.
+   */
+  static async assignUserToCommunity(params: {
+    userId: string;
+    neighborhood: string;
+    district: string;
+    city: string;
+    country: string;
+    latitude: number;
+    longitude: number;
+  }): Promise<{ communityId: string; communityName: string }> {
+    return this.confirmPrimaryCommunity(params);
+  }
+
+  /**
+   * @deprecated Alias for backward-compat.
+   */
+  static async updateUserCommunity(params: {
+    userId: string;
+    oldCommunityId?: string;
+    neighborhood: string;
+    district: string;
+    city: string;
+    country: string;
+    latitude: number;
+    longitude: number;
+  }): Promise<{ communityId: string; communityName: string }> {
+    const { oldCommunityId: _, ...rest } = params;
+    return this.confirmPrimaryCommunity(rest);
   }
 
   // ── Read ──────────────────────────────────────────────────────────────────
@@ -183,7 +232,7 @@ export class CommunityService {
 
   static subscribeToCommunity(
     communityId: string,
-    callback: (community: CommunityDoc | null) => void
+    callback: (community: CommunityDoc | null) => void,
   ): () => void {
     return onSnapshot(doc(db, 'communities', communityId), (snap: any) => {
       callback(snap.exists() ? (snap.data() as CommunityDoc) : null);

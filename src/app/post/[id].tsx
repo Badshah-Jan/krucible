@@ -24,7 +24,7 @@ import { CommentService, Comment } from '@/services/commentService';
 import { AuthService } from '@/services/authService';
 import { UserService } from '@/services/userService';
 
-const T = { bg: '#F8F9FA', card: '#FFFFFF', text: '#111827', textSecondary: '#6B7280', border: '#E5E7EB', primary: '#EF4444', blue: '#2563EB', green: '#10B981', yellow: '#D97706' };
+const T = { bg: '#F7F7F7', card: '#FFFFFF', text: '#222222', textSecondary: '#717171', border: '#EBEBEB', primary: '#FF385C', blue: '#2563EB', green: '#10B981', yellow: '#D97706' };
 
 export default function PostDetailScreen() {
   const { t } = useTranslation();
@@ -194,15 +194,28 @@ export default function PostDetailScreen() {
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               <View style={s.card}>
+                <View style={s.authorHeader}>
+                  {post.userAvatar ? (
+                    <Image source={{ uri: post.userAvatar }} style={s.authorAvatar} />
+                  ) : (
+                    <View style={[s.authorAvatar, { backgroundColor: '#EBEBEB', alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ color: T.textSecondary, fontWeight: '700', fontSize: 16 }}>{post.userName?.substring(0, 2).toUpperCase() || 'U'}</Text>
+                    </View>
+                  )}
+                  <View style={s.authorInfo}>
+                    <Text style={s.authorName}>{post.userName || 'A Neighbor'}</Text>
+                    <Text style={s.postTime}>{post.createdAt?.toDate?.()?.toLocaleString?.() || 'Just now'} • {post.distanceLabel || 'Nearby'}</Text>
+                  </View>
+                </View>
                 <Text style={s.title}>{post.title}</Text>
                 <Text style={s.desc}>{post.description}</Text>
-                {/* Bug fix: Post type has no `distance` field. Use `distanceLabel`. */}
-                <Text style={s.metaText}>{post.distanceLabel || 'Nearby'}</Text>
                 <TouchableOpacity style={s.locationStrip} activeOpacity={0.7} onPress={handleOpenMaps}>
+                  <Ionicons name="location" size={16} color={T.primary} style={{ marginRight: 8 }} />
                   <Text style={s.locationStripText}>Live location attached (Tap for Maps)</Text>
                 </TouchableOpacity>
                 {isEmergency && (
                   <View style={s.urgencyStrip}>
+                    <Ionicons name="warning" size={16} color={T.yellow} style={{ marginRight: 8 }} />
                     <Text style={s.urgencyStripText}>High urgency · Posted just now</Text>
                   </View>
                 )}
@@ -215,37 +228,42 @@ export default function PostDetailScreen() {
                     <Ionicons name="chatbubble-outline" size={18} color={T.textSecondary} />
                     <Text style={s.actionBoxText}>{postComments.length}</Text>
                   </View>
-                  <TouchableOpacity style={s.actionBox} onPress={() => Share.share({ message: post.title })}>
-                    <Ionicons name="share-social-outline" size={18} color={T.textSecondary} />
+                  <TouchableOpacity style={[s.actionBox, { backgroundColor: '#F7F7F7', borderColor: 'transparent' }]} onPress={() => Share.share({ message: post.title })}>
+                    <Ionicons name="share-social-outline" size={18} color={T.text} />
                     <Text style={s.actionBoxText}>Share</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={s.commentsTitle}>Comments ({postComments.length})</Text>
+                <View style={s.divider} />
+                <Text style={s.commentsTitle}>Discussion ({postComments.length})</Text>
               </View>
             }
             renderItem={({ item }: { item: Comment & { isReply?: boolean } }) => {
               const isLiked = item.likedBy?.includes(currentUser?.uid || '');
               const isMyComment = item.userId === currentUser?.uid;
               return (
-                <View style={[s.commentCard, item.isReply && { marginLeft: 46, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: '#F3F4F6' }]}>
+                <View style={[s.commentCard, item.isReply && s.replyCard]}>
                   <View style={s.commentHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={s.commentAvatar}>
-                        <Text style={s.commentAvatarText}>{item.userName?.substring(0, 2).toUpperCase() ?? 'U'}</Text>
-                      </View>
+                      {item.userAvatar ? (
+                        <Image source={{ uri: item.userAvatar }} style={s.commentAvatar} />
+                      ) : (
+                        <View style={s.commentAvatar}>
+                          <Text style={s.commentAvatarText}>{item.userName?.substring(0, 2).toUpperCase() ?? 'U'}</Text>
+                        </View>
+                      )}
                       <View style={{ marginLeft: 10 }}>
                         <Text style={s.commentName}>{item.userName}</Text>
                         <Text style={s.commentTime}>{item.createdAt?.toDate?.()?.toLocaleString?.() ?? 'recently'}</Text>
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => isMyComment ? handleDeleteComment(item.id!) : null}>
-                      <Ionicons name="ellipsis-horizontal" size={14} color={T.textSecondary} />
+                    <TouchableOpacity onPress={() => isMyComment ? handleDeleteComment(item.id!) : null} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                      <Ionicons name="ellipsis-horizontal" size={16} color={T.textSecondary} />
                     </TouchableOpacity>
                   </View>
                   <Text style={s.commentText}>{item.content}</Text>
                   <View style={s.commentActions}>
                     <TouchableOpacity style={s.commentActionBtn} onPress={() => handleToggleCommentLike(item.id!)}>
-                      <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={14} color={isLiked ? T.primary : T.textSecondary} />
+                      <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={16} color={isLiked ? T.primary : T.textSecondary} />
                       <Text style={[s.commentActionText, isLiked && { color: T.primary }]}>{item.likesCount || 0}</Text>
                     </TouchableOpacity>
                     {!item.isReply && (
@@ -297,41 +315,47 @@ export default function PostDetailScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FFFFFF' },
-  primaryBtn: { backgroundColor: T.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: T.text },
-  scrollContent: { paddingBottom: 100 },
-  card: { backgroundColor: '#FFFFFF', padding: 16, marginBottom: 8, borderBottomWidth: 4, borderBottomColor: '#F3F4F6' },
-  title: { fontSize: 22, fontWeight: '800', color: T.text, marginBottom: 8 },
-  desc: { fontSize: 15, color: T.textSecondary, lineHeight: 22, marginBottom: 16 },
-  metaText: { fontSize: 12, color: T.textSecondary, fontWeight: '500', marginBottom: 8 },
-  locationStrip: { paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#FEF2F2', borderBottomWidth: 1, borderBottomColor: '#FEF2F2', marginBottom: 8 },
-  locationStripText: { fontSize: 13, color: T.primary, fontWeight: '600' },
-  urgencyStrip: { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#FFFBEB', marginBottom: 16 },
-  urgencyStripText: { fontSize: 13, color: T.yellow, fontWeight: '600' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  actionBox: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6' },
-  actionBoxText: { fontSize: 13, fontWeight: '600', color: '#6B7280', marginLeft: 6 },
-  commentsTitle: { fontSize: 18, fontWeight: '800', color: T.text, paddingHorizontal: 16 },
-  commentCard: { paddingHorizontal: 16, marginBottom: 20 },
-  commentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#9CA3AF', alignItems: 'center', justifyContent: 'center' },
-  commentAvatarText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
-  commentName: { fontSize: 14, fontWeight: '700', color: T.text },
-  commentTime: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  commentText: { fontSize: 15, color: '#111827', lineHeight: 22, marginBottom: 10, marginLeft: 46 },
-  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginLeft: 46 },
-  commentActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  root: { flex: 1, backgroundColor: T.bg },
+  primaryBtn: { backgroundColor: T.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: T.card, borderBottomWidth: 1, borderBottomColor: T.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: T.text, letterSpacing: -0.3 },
+  scrollContent: { paddingBottom: 120 },
+  card: { backgroundColor: T.card, paddingTop: 20, paddingHorizontal: 20, paddingBottom: 8, marginBottom: 8, borderBottomWidth: 8, borderBottomColor: '#F0F0F0' },
+  authorHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  authorAvatar: { width: 44, height: 44, borderRadius: 22 },
+  authorInfo: { marginLeft: 12 },
+  authorName: { fontSize: 16, fontWeight: '700', color: T.text },
+  postTime: { fontSize: 13, color: T.textSecondary, marginTop: 2, fontWeight: '500' },
+  title: { fontSize: 26, fontWeight: '800', color: T.text, marginBottom: 12, letterSpacing: -0.5 },
+  desc: { fontSize: 17, color: T.text, lineHeight: 26, marginBottom: 20, fontWeight: '400' },
+  locationStrip: { paddingVertical: 14, paddingHorizontal: 16, backgroundColor: '#F7F7F7', borderRadius: 12, flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  locationStripText: { fontSize: 14, color: T.text, fontWeight: '600' },
+  urgencyStrip: { paddingVertical: 14, paddingHorizontal: 16, backgroundColor: '#FFFBEB', borderRadius: 12, flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  urgencyStripText: { fontSize: 14, color: T.yellow, fontWeight: '600' },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, marginTop: 8 },
+  actionBox: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: T.border },
+  actionBoxText: { fontSize: 14, fontWeight: '600', color: T.text, marginLeft: 8 },
+  divider: { height: 1, backgroundColor: T.border, marginHorizontal: -20, marginTop: 8 },
+  commentsTitle: { fontSize: 20, fontWeight: '800', color: T.text, paddingTop: 20, paddingBottom: 12 },
+  commentCard: { paddingHorizontal: 20, marginBottom: 28 },
+  replyCard: { marginLeft: 48, paddingLeft: 16, borderLeftWidth: 2, borderLeftColor: '#EBEBEB', marginTop: -12 },
+  commentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EBEBEB', alignItems: 'center', justifyContent: 'center' },
+  commentAvatarText: { color: T.textSecondary, fontSize: 13, fontWeight: 'bold' },
+  commentName: { fontSize: 15, fontWeight: '700', color: T.text },
+  commentTime: { fontSize: 12, color: T.textSecondary, marginTop: 2, fontWeight: '500' },
+  commentText: { fontSize: 16, color: T.text, lineHeight: 24, marginBottom: 10, marginLeft: 46 },
+  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 24, marginLeft: 46 },
+  commentActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   commentActionText: { fontSize: 13, fontWeight: '600', color: T.textSecondary },
   emptyState: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyStateText: { fontSize: 15, color: T.textSecondary, marginTop: 12, textAlign: 'center' },
-  inputWrapper: { padding: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFFFFF' },
-  replyBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#F3F4F6', borderRadius: 8, marginBottom: 8 },
-  replyBarText: { fontSize: 12, color: T.textSecondary, fontWeight: '500' },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 8 },
-  input: { flex: 1, fontSize: 15, color: T.text, maxHeight: 100, minHeight: 36, paddingVertical: 8 },
-  sendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: T.primary, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  emptyStateText: { fontSize: 16, color: T.textSecondary, marginTop: 12, textAlign: 'center', fontWeight: '500' },
+  inputWrapper: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 32 : 16, borderTopWidth: 1, borderTopColor: T.border, backgroundColor: T.card, shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 10 },
+  replyBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#F7F7F7', borderRadius: 12, marginBottom: 12 },
+  replyBarText: { fontSize: 13, color: T.textSecondary, fontWeight: '600' },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F7F7', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 6, borderWidth: 1, borderColor: T.border },
+  input: { flex: 1, fontSize: 16, color: T.text, maxHeight: 100, minHeight: 40, paddingVertical: 8 },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: T.primary, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
 });

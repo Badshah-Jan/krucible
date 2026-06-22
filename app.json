@@ -11,14 +11,20 @@
       "icon": "./assets/images/icon.png",
       "config": {
         "googleMapsApiKey": "AIzaSyDsXPh36w9Acbg0LHwVxNF2I3D3M__WyeM"
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Neighborly uses your location to match you with your local community and to broadcast emergency SOS alerts to nearby neighbors.",
+        "NSCameraUsageDescription": "Neighborly uses your camera so you can take a profile photo or share images in the community feed and marketplace listings.",
+        "NSPhotoLibraryUsageDescription": "Neighborly accesses your photo library so you can choose a profile picture or attach images to community posts and marketplace listings.",
+        "NSUserNotificationUsageDescription": "Neighborly sends push notifications to alert you about emergency SOS alerts nearby, new messages from neighbors, and community activity updates."
       }
     },
     "android": {
       "package": "com.neighborly.app",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/images/adaptive-icon.png"
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/images/icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "config": {

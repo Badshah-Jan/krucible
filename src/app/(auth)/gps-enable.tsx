@@ -27,12 +27,10 @@ import Animated, {
   SlideInUp,
 } from 'react-native-reanimated';
 import { useAppStore } from '@/store/appStore';
-import type { Community } from '@/store/appStore';
 import GradientBg from '@/components/common/GradientBg';
 import Text from '@/components/common/Text';
 import { LocationService } from '@/services/locationService';
 import { UserService } from '@/services/userService';
-import { CommunityService } from '@/services/communityService';
 import { AuthService } from '@/services/authService';
 
 // ─── Pulsing Ring Component ───────────────────────────────────────────────────
@@ -117,7 +115,7 @@ type Phase = 'gps_required' | 'acquiring' | 'success';
 
 export default function GpsEnableScreen() {
   const router = useRouter();
-  const setLocation = useAppStore((s) => s.setLocation);
+  const setCurrentCoordinates = useAppStore((s) => s.setCurrentCoordinates);
   const setGpsDisabled = useAppStore((s) => s.setGpsDisabled);
   const setLocationStatus = useAppStore((s) => s.setLocationStatus);
 
@@ -164,72 +162,43 @@ export default function GpsEnableScreen() {
 
       const { latitude: lat, longitude: lng } = pos;
 
-      const place = await LocationService.reverseGeocode(lat, lng);
-      if (!place) throw new Error('Could not reverse geocode');
-
       const currentUser = AuthService.getCurrentUser();
       if (!currentUser) throw new Error('Not authenticated');
 
-      const { communityId, communityName: cName } =
-        await CommunityService.assignUserToCommunity({
-          userId: currentUser.uid,
-          neighborhood: place.neighborhood,
-          district: place.district,
-          city: place.city,
-          country: place.country,
-          latitude: lat,
-          longitude: lng,
-        });
+      // Check if user already has a confirmed primary community
+      const { UserService } = require('@/services/userService');
+      const profile = await UserService.getOwnProfile(currentUser.uid);
+      const hasPrimary = !!(profile?.primaryCommunityId ?? profile?.communityId);
 
+      // Always update current coordinates
       await UserService.updateUser(currentUser.uid, {
         latitude: lat,
         longitude: lng,
-        neighborhood: place.neighborhood,
-        area: place.neighborhood,
-        district: place.district,
-        city: place.city,
-        country: place.country,
+        currentLatitude: lat,
+        currentLongitude: lng,
+        locationEnabled: true,
+        lastLocationUpdate: new Date(),
       });
 
-      const community: Community = {
-        name: cName,
-        area: place.neighborhood,
-        district: place.district,
-        city: place.city,
-        country: place.country,
-        communityId,
-      };
-
-      setLocation({ lat, lng }, community);
+      setCurrentCoordinates({ lat, lng });
       setGpsDisabled(false);
-      setCommunityName(cName);
-      setPhase('success');
 
-      // Navigate after brief celebration
-      setTimeout(() => {
-        router.replace('/(tabs)');
-      }, 1800);
+      if (hasPrimary) {
+        // User has a home community — just restore coordinates and go to tabs
+        const primaryName = profile.primaryCommunityName ?? profile.communityName ?? 'Your Community';
+        setCommunityName(primaryName);
+        setPhase('success');
+        setTimeout(() => router.replace('/(tabs)'), 1800);
+      } else {
+        // No primary community yet — route to community-setup for confirmation
+        setPhase('success');
+        setTimeout(() => router.replace('/(auth)/community-setup'), 1800);
+      }
     } catch (e: any) {
       console.error('[GpsEnableScreen] pipeline error:', e);
-      // Return to gps_required — GPS may still be off
       setPhase('gps_required');
     }
   }, []);
-
-  // ── Polling: check GPS every 2s while waiting ─────────────────────────────
-  const startPolling = useCallback(() => {
-    if (pollingRef.current) return;
-    pollingRef.current = setInterval(async () => {
-      try {
-        const enabled = await ExpoLocation.hasServicesEnabledAsync();
-        if (enabled) {
-          stopPolling();
-          setGpsDisabled(false);
-          await runLocationPipeline();
-        }
-      } catch (_) {}
-    }, 2000);
-  }, [runLocationPipeline]);
 
   const stopPolling = () => {
     if (pollingRef.current) {
@@ -238,21 +207,20 @@ export default function GpsEnableScreen() {
     }
   };
 
-  // Start polling on mount
+  // Check GPS once on mount; then rely on AppState foreground events only.
+  // No aggressive polling intervals — battery efficient.
   useEffect(() => {
-    startPolling();
+    // Immediate check on mount
+    ExpoLocation.hasServicesEnabledAsync().then((enabled) => {
+      if (enabled) runLocationPipeline();
+    }).catch(() => {});
 
-    // Also re-check when app comes to foreground
+    // Re-check when app comes back to foreground
     const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
-        // App just foregrounded — immediately check GPS
         ExpoLocation.hasServicesEnabledAsync().then((enabled) => {
-          if (enabled && phase === 'gps_required') {
-            stopPolling();
-            setGpsDisabled(false);
-            runLocationPipeline();
-          }
-        });
+          if (enabled) runLocationPipeline();
+        }).catch(() => {});
       }
       appStateRef.current = nextState;
     });
@@ -261,7 +229,7 @@ export default function GpsEnableScreen() {
       stopPolling();
       sub.remove();
     };
-  }, []);
+  }, [runLocationPipeline]);
 
   const openLocationSettings = async () => {
     if (Platform.OS === 'android') {
