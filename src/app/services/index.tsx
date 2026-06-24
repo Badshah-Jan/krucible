@@ -195,28 +195,20 @@ export default function ServicesMarketplaceScreen() {
 }
 
 const MemoizedServiceItem = React.memo(({ provider, index, onPress, onCall, onWhatsApp }: any) => {
-  const isPremium = provider.isPremium;
-  
   return (
     <Animated.View entering={FadeInDown.duration(400).delay(index * 100).springify()}>
       <TouchableOpacity 
-        style={[isPremium ? null : styles.providerCard, { marginHorizontal: 16 }]}
+        style={[styles.providerCard, { marginHorizontal: 16 }]}
         activeOpacity={0.8}
         onPress={onPress}
       >
-        {isPremium ? (
-          <LinearGradient colors={["#FFFBEB", "#FEF3C7"]} style={styles.premiumCard} start={{x:0, y:0}} end={{x:1, y:1}}>
-            <ServiceCardContent provider={provider} isPremium={true} onCall={onCall} onWhatsApp={onWhatsApp} />
-          </LinearGradient>
-        ) : (
-          <ServiceCardContent provider={provider} isPremium={false} onCall={onCall} onWhatsApp={onWhatsApp} />
-        )}
+        <ServiceCardContent provider={provider} onCall={onCall} onWhatsApp={onWhatsApp} />
       </TouchableOpacity>
     </Animated.View>
   );
-}, (prev, next) => prev.provider.id === next.provider.id && prev.provider.isPremium === next.provider.isPremium && prev.provider.name === next.provider.name);
+}, (prev, next) => prev.provider.id === next.provider.id && prev.provider.name === next.provider.name);
 
-const ServiceCardContent = React.memo(({ provider, isPremium, onCall, onWhatsApp }: { provider: ServiceProvider; isPremium: boolean; onCall: any; onWhatsApp: any }) => {
+const ServiceCardContent = React.memo(({ provider, onCall, onWhatsApp }: { provider: ServiceProvider; onCall: any; onWhatsApp: any }) => {
   return (
     <View>
       <View style={styles.providerHeader}>
@@ -226,22 +218,16 @@ const ServiceCardContent = React.memo(({ provider, isPremium, onCall, onWhatsApp
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.providerName} numberOfLines={1}>{provider.name}</Text>
-          <Text style={[styles.providerCat, isPremium && { color: "#D97706" }]} numberOfLines={1}>{provider.category}</Text>
+          <Text style={styles.providerCat} numberOfLines={1}>{provider.category}</Text>
         </View>
         <View style={styles.badgesCol}>
-          {isPremium && (
-            <View style={[styles.badge, { backgroundColor: '#FDE68A', borderColor: '#FCD34D', borderWidth: 1, marginBottom: 4 }]}>
-              <Ionicons name="star" size={10} color="#D97706" style={{ marginRight: 2 }} />
-              <Text style={[styles.badgeText, { color: '#B45309' }]}>PREMIUM</Text>
-            </View>
-          )}
           <View style={styles.ratingBadge}>
             <Ionicons name="star" size={10} color="#F59E0B" />
             <Text style={styles.ratingText}>{provider.rating ? provider.rating.toFixed(1) : 'New'}</Text>
           </View>
         </View>
       </View>
-      <Text style={[styles.providerAbout, isPremium && { color: "#78350F" }]} numberOfLines={2}>{provider.about}</Text>
+      <Text style={styles.providerAbout} numberOfLines={2}>{provider.about}</Text>
       
       {/* Inline Actions */}
       {provider.phone && (
@@ -255,11 +241,11 @@ const ServiceCardContent = React.memo(({ provider, isPremium, onCall, onWhatsApp
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionBtn, isPremium && { backgroundColor: "#FEF3C7", borderColor: "#FDE68A" }]} 
+            style={styles.actionBtn} 
             onPress={() => onCall(provider.phone)}
           >
-            <Ionicons name="call" size={14} color={isPremium ? "#D97706" : Colors.primary} style={{ marginRight: 6 }} />
-            <Text style={[styles.actionBtnText, isPremium && { color: "#D97706" }]}>Call</Text>
+            <Ionicons name="call" size={14} color={Colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.actionBtnText}>Call</Text>
           </TouchableOpacity>
         </View>
       )}

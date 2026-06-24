@@ -27,8 +27,7 @@ export interface Comment {
   userAvatar?: string;
   content: string;
   createdAt?: any;
-  likesCount?: number;
-  likedBy?: string[];
+
   parentId?: string; // For nested replies
 }
 
@@ -36,7 +35,7 @@ export class CommentService {
   /**
    * Adds a comment to a specific post's sub-collection
    */
-  static async addComment(postId: string, commentData: Omit<Comment, 'id' | 'createdAt' | 'likesCount' | 'likedBy'>): Promise<string> {
+  static async addComment(postId: string, commentData: Omit<Comment, 'id' | 'createdAt'>): Promise<string> {
     try {
       await SecurityService.enforceRateLimit('comment_create');
 
@@ -45,8 +44,6 @@ export class CommentService {
       const docRef = await addDoc(commentsRef, {
         ...commentData,
         content: sanitizeText(commentData.content, 2000),
-        likesCount: 0,
-        likedBy: [],
         createdAt: serverTimestamp()
       });
 
@@ -162,35 +159,6 @@ export class CommentService {
     }, onError);
   }
 
-  /**
-   * Toggles a like on a specific comment
-   */
-  static async toggleCommentLike(postId: string, commentId: string, userId: string): Promise<void> {
-    try {
-      const commentRef = doc(db, 'posts', postId, 'comments', commentId);
-      const commentSnap = await getDoc(commentRef);
-      if (!commentSnap.exists()) return;
-
-      const data = commentSnap.data();
-      const likedBy: string[] = data.likedBy || [];
-      const isLiked = likedBy.includes(userId);
-
-      if (isLiked) {
-        await updateDoc(commentRef, {
-          likedBy: arrayRemove(userId),
-          likesCount: increment(-1)
-        });
-      } else {
-        await updateDoc(commentRef, {
-          likedBy: arrayUnion(userId),
-          likesCount: increment(1)
-        });
-      }
-    } catch (error) {
-      console.error("Error toggling comment like:", error);
-      throw error;
-    }
-  }
 
   /**
    * Deletes a comment and decrements the post's comment count

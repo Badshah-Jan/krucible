@@ -88,10 +88,7 @@ export default function SupportScreen() {
       q: 'How do I block a user?',
       a: 'Go to their profile, tap the three dots menu, and select "Block User". You can manage blocked users in Settings > Blocked Users.',
     },
-    {
-      q: 'What is Karma and how do I earn it?',
-      a: 'Karma points are earned by helping neighbors, responding to SOS alerts, and being an active community member. View your Karma Dashboard in Profile > Karma.',
-    },
+
     {
       q: 'How do I delete my account?',
       a: 'Go to Settings > Delete Account. Note: This action is permanent and will delete all your data.',

@@ -77,7 +77,7 @@ export default function ServiceDetailScreen() {
     try {
       const userProfile = await UserService.getUserProfile(me.uid);
       const myName = userProfile?.name || me.displayName || "Neighbor";
-      const chatId = await ChatService.createOrGetDmConversation(me.uid, provider.userId, myName, provider.name || "Provider", "service");
+      const chatId = await ChatService.createOrGetDmConversation(me.uid, provider.userId, myName, provider.name || "Provider", "service", provider.id, provider.name || "Service");
       router.push(`/chat/${chatId}?name=${encodeURIComponent(provider.name || "Provider")}` as any);
     } catch (e: any) {
       console.error("Chat Error:", e);
@@ -123,12 +123,13 @@ export default function ServiceDetailScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
+          {/* @ts-ignore */}
           {provider.isPremium ? (
             <LinearGradient colors={["#FFFBEB", "#FEF3C7", "transparent"]} style={styles.profileHeader}>
               <View style={styles.badges}>
                 <View style={[styles.badge, { backgroundColor: '#FDE68A', borderColor: '#FCD34D', borderWidth: 1 }]}>
                   <Ionicons name="star" size={12} color="#D97706" style={{ marginRight: 4 }} />
-                  <Text style={[styles.badgeText, { color: '#B45309' }]}>PREMIUM PROVIDER</Text>
+                  <Text style={[styles.badgeText, { color: '#B45309' }]}>PREMIUM LISTING (COMING SOON)</Text>
                 </View>
                 {provider.isVerified && (
                   <View style={[styles.badge, { backgroundColor: '#D1FAE5', borderColor: '#A7F3D0', borderWidth: 1 }]}>
@@ -156,6 +157,10 @@ export default function ServiceDetailScreen() {
           ) : (
             <View style={styles.profileHeader}>
               <View style={styles.badges}>
+                <View style={[styles.badge, { backgroundColor: '#FEF3C7', borderColor: '#FCD34D', borderWidth: 1 }]}>
+                  <Ionicons name="star" size={12} color="#D97706" style={{ marginRight: 4 }} />
+                  <Text style={[styles.badgeText, { color: '#B45309' }]}>PREMIUM LISTING (COMING SOON)</Text>
+                </View>
                 {provider.isVerified && (
                   <View style={[styles.badge, { backgroundColor: '#D1FAE5', borderColor: '#A7F3D0', borderWidth: 1 }]}>
                     <Ionicons name="checkmark-circle" size={12} color="#059669" style={{ marginRight: 4 }} />
@@ -201,8 +206,12 @@ export default function ServiceDetailScreen() {
               <Text style={styles.aboutText}>{provider.about}</Text>
             </View>
 
+            {/* @ts-ignore */}
             {provider.userId === AuthService.getCurrentUser()?.uid && !provider.isPremium && (
               <LinearGradient colors={["#FFFBEB", "#FEF3C7"]} style={styles.upgradeBox}>
+                <View style={{ position: 'absolute', top: -10, right: 16, backgroundColor: '#D97706', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                  <Text style={{ fontSize: 10, fontWeight: "800", color: "#FFF", textTransform: "uppercase" }}>Coming Soon</Text>
+                </View>
                 <View style={styles.upgradeIconBox}>
                   <Ionicons name="star" size={24} color="#D97706" />
                 </View>
@@ -211,7 +220,7 @@ export default function ServiceDetailScreen() {
                   <Text style={styles.upgradeSub}>Get featured placement and rank higher in local searches.</Text>
                   <TouchableOpacity 
                     style={styles.upgradeBtn}
-                    onPress={() => router.push(`/businesses/premium?id=${provider.id}&type=service` as any)}
+                    onPress={() => router.push(`/premium` as any)}
                   >
                     <Text style={styles.upgradeBtnText}>See Benefits</Text>
                   </TouchableOpacity>

@@ -71,17 +71,6 @@ export default function PostDetailScreen() {
     return out;
   }, [postComments, sortOrder]);
 
-  const handleToggleLike = async () => {
-    if (!currentUser || !post || !id) return;
-    const likedByMe = post.likedBy?.includes(currentUser.uid) || false;
-    setPost({
-      ...post,
-      likesCount: likedByMe ? Math.max(0, post.likesCount - 1) : post.likesCount + 1,
-      likedBy: likedByMe ? (post.likedBy || []).filter(u => u !== currentUser.uid) : [...(post.likedBy || []), currentUser.uid],
-    });
-    try { await PostService.toggleLike(id, currentUser.uid); }
-    catch (error) { console.error(error); setPost(post); }
-  };
 
   const handleSendComment = async () => {
     if (newComment.trim().length === 0) return;
@@ -101,7 +90,6 @@ export default function PostDetailScreen() {
         commentPayload.parentId = replyingTo.id;
       }
       await CommentService.addComment(id, commentPayload);
-      await UserService.incrementKarma(user.uid, 2);
       setNewComment('');
       setReplyingTo(null);
     } catch (error) {
@@ -112,11 +100,6 @@ export default function PostDetailScreen() {
     }
   };
 
-  const handleToggleCommentLike = async (commentId: string) => {
-    if (!currentUser || !id) return;
-    try { await CommentService.toggleCommentLike(id, commentId, currentUser.uid); }
-    catch (e) { console.error(e); }
-  };
 
   const handleDeleteComment = (commentId: string) => {
     if (!id) return;
@@ -147,7 +130,7 @@ export default function PostDetailScreen() {
       <View style={s.root}>
         <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={T.primary} />
-          <Text style={{ marginTop: 16, color: T.textSecondary }}>{t('loading_discussion', 'Loading discussion...')}</Text>
+          <Text style={{ marginTop: 16, color: T.textSecondary }}>{t('loading_discussion', 'Loading details...')}</Text>
         </SafeAreaView>
       </View>
     );
@@ -176,7 +159,7 @@ export default function PostDetailScreen() {
           <TouchableOpacity onPress={() => router.back()} style={s.headerBtn} activeOpacity={0.8}>
             <Ionicons name="arrow-back" size={20} color={T.text} />
           </TouchableOpacity>
-          <Text style={s.headerTitle}>{t('discussion', 'Discussion')}</Text>
+          <Text style={s.headerTitle}>{isEmergency ? 'Emergency Alert' : 'Request Details'}</Text>
           <TouchableOpacity style={s.headerBtn} activeOpacity={0.8} onPress={() => Share.share({ message: post.title })}>
             <Ionicons name="ellipsis-horizontal" size={20} color={T.text} />
           </TouchableOpacity>
@@ -220,25 +203,21 @@ export default function PostDetailScreen() {
                   </View>
                 )}
                 <View style={s.actionRow}>
-                  <TouchableOpacity style={s.actionBox} onPress={handleToggleLike}>
-                    <Ionicons name="heart-outline" size={18} color={T.textSecondary} />
-                    <Text style={s.actionBoxText}>{post.likesCount || 0}</Text>
-                  </TouchableOpacity>
+
                   <View style={s.actionBox}>
-                    <Ionicons name="chatbubble-outline" size={18} color={T.textSecondary} />
-                    <Text style={s.actionBoxText}>{postComments.length}</Text>
+                    <Ionicons name="list-outline" size={18} color={T.textSecondary} />
+                    <Text style={s.actionBoxText}>{postComments.length} Responses</Text>
                   </View>
                   <TouchableOpacity style={[s.actionBox, { backgroundColor: '#F7F7F7', borderColor: 'transparent' }]} onPress={() => Share.share({ message: post.title })}>
-                    <Ionicons name="share-social-outline" size={18} color={T.text} />
+                    <Ionicons name="share-outline" size={18} color={T.text} />
                     <Text style={s.actionBoxText}>Share</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={s.divider} />
-                <Text style={s.commentsTitle}>Discussion ({postComments.length})</Text>
+                <Text style={s.commentsTitle}>Activity Log ({postComments.length})</Text>
               </View>
             }
             renderItem={({ item }: { item: Comment & { isReply?: boolean } }) => {
-              const isLiked = item.likedBy?.includes(currentUser?.uid || '');
               const isMyComment = item.userId === currentUser?.uid;
               return (
                 <View style={[s.commentCard, item.isReply && s.replyCard]}>
@@ -262,10 +241,6 @@ export default function PostDetailScreen() {
                   </View>
                   <Text style={s.commentText}>{item.content}</Text>
                   <View style={s.commentActions}>
-                    <TouchableOpacity style={s.commentActionBtn} onPress={() => handleToggleCommentLike(item.id!)}>
-                      <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={16} color={isLiked ? T.primary : T.textSecondary} />
-                      <Text style={[s.commentActionText, isLiked && { color: T.primary }]}>{item.likesCount || 0}</Text>
-                    </TouchableOpacity>
                     {!item.isReply && (
                       <TouchableOpacity style={s.commentActionBtn} onPress={() => setReplyingTo(item)}>
                         <Text style={s.commentActionText}>Reply</Text>
@@ -277,8 +252,8 @@ export default function PostDetailScreen() {
             }}
             ListEmptyComponent={
               <View style={s.emptyState}>
-                <Ionicons name="chatbubbles-outline" size={40} color="#D1D5DB" />
-                <Text style={s.emptyStateText}>{t('no_comments_yet_start_the_conv', 'No comments yet. Start the conversation!')}</Text>
+                <Ionicons name="document-text-outline" size={40} color="#D1D5DB" />
+                <Text style={s.emptyStateText}>{t('no_comments_yet_start_the_conv', 'No responses yet. Be the first to help or share info.')}</Text>
               </View>
             }
           />
@@ -296,7 +271,7 @@ export default function PostDetailScreen() {
               <TextInput
                 value={newComment}
                 onChangeText={setNewComment}
-                placeholder={replyingTo ? 'Write a reply...' : 'Add a comment...'}
+                placeholder={replyingTo ? 'Write a follow-up...' : 'Add a response or offer help...'}
                 placeholderTextColor="#9CA3AF"
                 style={s.input}
                 editable={!isSubmitting}
@@ -338,16 +313,16 @@ const s = StyleSheet.create({
   actionBox: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: T.border },
   actionBoxText: { fontSize: 14, fontWeight: '600', color: T.text, marginLeft: 8 },
   divider: { height: 1, backgroundColor: T.border, marginHorizontal: -20, marginTop: 8 },
-  commentsTitle: { fontSize: 20, fontWeight: '800', color: T.text, paddingTop: 20, paddingBottom: 12 },
-  commentCard: { paddingHorizontal: 20, marginBottom: 28 },
+  commentsTitle: { fontSize: 16, fontWeight: '700', color: T.textSecondary, paddingTop: 20, paddingBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+  commentCard: { paddingHorizontal: 20, marginBottom: 20 },
   replyCard: { marginLeft: 48, paddingLeft: 16, borderLeftWidth: 2, borderLeftColor: '#EBEBEB', marginTop: -12 },
   commentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EBEBEB', alignItems: 'center', justifyContent: 'center' },
+  commentAvatar: { width: 32, height: 32, borderRadius: 6, backgroundColor: '#EBEBEB', alignItems: 'center', justifyContent: 'center' },
   commentAvatarText: { color: T.textSecondary, fontSize: 13, fontWeight: 'bold' },
-  commentName: { fontSize: 15, fontWeight: '700', color: T.text },
+  commentName: { fontSize: 14, fontWeight: '700', color: T.text },
   commentTime: { fontSize: 12, color: T.textSecondary, marginTop: 2, fontWeight: '500' },
-  commentText: { fontSize: 16, color: T.text, lineHeight: 24, marginBottom: 10, marginLeft: 46 },
-  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 24, marginLeft: 46 },
+  commentText: { fontSize: 15, color: T.text, lineHeight: 22, marginBottom: 10, marginLeft: 42 },
+  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 24, marginLeft: 42 },
   commentActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   commentActionText: { fontSize: 13, fontWeight: '600', color: T.textSecondary },
   emptyState: { padding: 40, alignItems: 'center', justifyContent: 'center' },

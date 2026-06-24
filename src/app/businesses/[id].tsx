@@ -65,7 +65,7 @@ export default function BusinessProfileScreen() {
       BusinessService.trackContactClick(id as string);
       const userProfile = await UserService.getOwnProfile(me.uid);
       const myName = userProfile?.name || me.displayName || "Neighbor";
-      const chatId = await ChatService.createOrGetDmConversation(me.uid, business.userId, myName, business.businessName || "Business", "business");
+      const chatId = await ChatService.createOrGetDmConversation(me.uid, business.userId, myName, business.businessName || "Business", "business", business.id, business.businessName || "Business");
       router.push(`/chat/${chatId}?name=${encodeURIComponent(business.businessName || "Business")}` as any);
     } catch (e: any) {
       console.error("Chat Error:", e);
@@ -105,6 +105,7 @@ export default function BusinessProfileScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
+          {/* @ts-ignore */}
           {business.isPremium ? (
             <LinearGradient colors={["#FFFBEB", "#FEF3C7", "transparent"]} style={styles.profileHeader}>
               <View style={styles.badges}>
@@ -178,6 +179,7 @@ export default function BusinessProfileScreen() {
               )}
             </View>
             
+            {/* @ts-ignore */}
             {business.userId === AuthService.getCurrentUser()?.uid && !business.isPremium && (
               <LinearGradient colors={["#FFFBEB", "#FEF3C7"]} style={styles.upgradeBox}>
                 <View style={styles.upgradeIconBox}>

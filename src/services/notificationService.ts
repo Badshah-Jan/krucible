@@ -27,11 +27,10 @@ export type NotificationType =
   | "comment_reply"
   | "direct_message"
   | "community_update"
-  | "karma_reward"
   | "recommendation"
   | "lost_found"
-  | "system"
-  | "like_notification";
+  | "service_update"
+  | "system";
 
 export interface AppNotification {
   id: string;
@@ -58,16 +57,15 @@ Notifications.setNotificationHandler({
 // ── Map notification types to preference keys ──────────────────────────────────
 const TYPE_TO_PREF_KEY: Record<string, string> = {
   sos_alert: "sos",
-  help_request: "mentions",
-  comment: "mentions",
-  comment_reply: "mentions",
+  help_request: "community",
+  comment: "community",
+  comment_reply: "community",
   direct_message: "messages",
   community_update: "community",
-  karma_reward: "karma",
   recommendation: "recommendations",
-  lost_found: "lostAndFound",
+  service_update: "services",
+  lost_found: "community",
   system: "pushEnabled", // system notifications always go if push is enabled
-  like_notification: "mentions",
 };
 
 class NotificationService {
@@ -86,14 +84,29 @@ class NotificationService {
       await Notifications.setNotificationChannelAsync("sos_alerts", {
         name: "SOS Alerts",
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 200, 500],
-        sound: "default",
+        vibrationPattern: [0, 500, 200, 500, 200, 500],
+        sound: "sos_alert.wav",
       });
       await Notifications.setNotificationChannelAsync("messages", {
         name: "Messages",
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 150],
-        sound: "default",
+        sound: "message.wav",
+      });
+      await Notifications.setNotificationChannelAsync("help_requests", {
+        name: "Help Requests",
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: "need_help.wav",
+      });
+      await Notifications.setNotificationChannelAsync("recommendations", {
+        name: "Recommendations",
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: "recommend.wav",
+      });
+      await Notifications.setNotificationChannelAsync("service_updates", {
+        name: "Service Activity",
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: "service.wav",
       });
       await Notifications.setNotificationChannelAsync("community", {
         name: "Community",
@@ -267,13 +280,17 @@ class NotificationService {
       case "sos_alert":
         return "sos_alerts";
       case "direct_message":
-      case "help_request":
         return "messages";
+      case "help_request":
+        return "help_requests";
+      case "recommendation":
+        return "recommendations";
+      case "service_update":
+        return "service_updates";
       case "community_update":
       case "comment":
       case "comment_reply":
       case "lost_found":
-      case "recommendation":
         return "community";
       default:
         return "general";
@@ -296,9 +313,19 @@ class NotificationService {
     const validTokens = tokens.filter((t) => t && t.startsWith("ExponentPushToken"));
     if (validTokens.length === 0) return;
 
+    // Map channelId to the sound filename for iOS payload
+    let soundName = "default";
+    switch (channelId) {
+      case "sos_alerts": soundName = "sos_alert.wav"; break;
+      case "messages": soundName = "message.wav"; break;
+      case "help_requests": soundName = "need_help.wav"; break;
+      case "recommendations": soundName = "recommend.wav"; break;
+      case "service_updates": soundName = "service.wav"; break;
+    }
+
     const messages = validTokens.map((token) => ({
       to: token,
-      sound: "default",
+      sound: soundName,
       title,
       body,
       data,
@@ -507,9 +534,16 @@ class NotificationService {
       const notifs: AppNotification[] = snapshot.docs
         .map((doc: any) => ({ id: doc.id, ...doc.data() }) as AppNotification)
         .sort((a: any, b: any) => {
-          const ta = a.createdAt?.toDate?.() ?? new Date(a.createdAt ?? 0);
-          const tb = b.createdAt?.toDate?.() ?? new Date(b.createdAt ?? 0);
-          return tb.getTime() - ta.getTime(); // desc
+          // If createdAt is null (pending serverTimestamp), it should be considered "now"
+          const getMs = (val: any) => {
+            if (!val) return Date.now();
+            if (val.toDate) return val.toDate().getTime();
+            if (val.seconds) return val.seconds * 1000;
+            return new Date(val).getTime();
+          };
+          const ta = getMs(a.createdAt);
+          const tb = getMs(b.createdAt);
+          return tb - ta; // desc
         });
       callback(notifs);
     });

@@ -61,9 +61,9 @@ export const UI = {
   error: (title: string, message?: string) => {
     useUIStore.getState().showToast({ title, message, type: 'error' });
   },
-  alert: (title: string, message: string, type: ModalType = 'info') => {
+  alert: (title: string, message: string, type: ModalType = 'info', onConfirm?: () => void, confirmText: string = 'OK') => {
     useUIStore.getState().showModal({
-      title, message, type, showCancel: false, confirmText: 'OK'
+      title, message, type, showCancel: false, confirmText, onConfirm
     });
   },
   confirm: (

@@ -386,8 +386,14 @@ export class SosService {
         }
       });
 
+      // Update the user's SOS response count
+      const userRef = doc(db, "users", responderId);
+      await updateDoc(userRef, {
+        sosResponsesGiven: increment(1)
+      }).catch(e => console.warn("Could not update user SOS responses count", e));
+
       // Award Karma
-      await UserService.incrementKarma(responderId, 10, "Responded to an SOS Emergency");
+      // await UserService.incrementKarma(responderId, 10, "Responded to an SOS Emergency");
 
       // Broadcast update to Community Chat
       this.broadcastSOSSystemMessage({ ...data, id: sosId }, "responding").catch(console.warn);
@@ -414,7 +420,7 @@ export class SosService {
       });
 
       if (data) {
-        await UserService.incrementKarma(data.creatorId, 30, "Resolved an SOS Emergency");
+        // await UserService.incrementKarma(data.creatorId, 30, "Resolved an SOS Emergency");
         this.broadcastSOSSystemMessage({ ...data, id: sosId }, "resolved").catch(console.warn);
       }
     } catch (error) {

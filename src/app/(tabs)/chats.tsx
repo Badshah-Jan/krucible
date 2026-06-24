@@ -325,10 +325,16 @@ export default function ChatsScreen() {
       let initStr = "?";
       let bgColor = T.primary;
       if (isDm && uid) {
-        const otherId = conv.participants.find((p) => p !== uid);
+        const otherId = conv.participants?.find((p) => p !== uid);
         displayName = otherId
           ? (conv.participantNames?.[otherId] ?? "Neighbor")
           : "Neighbor";
+          
+        // Use service/business name if available
+        if ((conv.context === "service" || conv.context === "business") && conv.contextTitle) {
+          displayName = conv.contextTitle;
+        }
+
         initStr = getInitials(displayName);
         bgColor = avatarColor(displayName);
       }

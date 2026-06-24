@@ -31,10 +31,6 @@ export interface BusinessProfile {
   // Freemium Monetization fields
   verificationStatus: "none" | "pending" | "approved" | "rejected";
   isVerified: boolean;
-  isPremium: boolean;
-  subscriptionPlan: 'free' | 'premium';
-  featuredUntil: any | null;
-  promotionLevel: number; // For future tier sorting
   views: number;
   contactClicks: number;
   
@@ -60,7 +56,7 @@ export const BUSINESS_CATEGORIES = [
 ];
 
 class BusinessService {
-  async registerBusiness(business: Omit<BusinessProfile, "id" | "isVerified" | "isPremium" | "subscriptionPlan" | "featuredUntil" | "promotionLevel" | "views" | "contactClicks" | "verificationStatus" | "createdAt" | "updatedAt">) {
+  async registerBusiness(business: Omit<BusinessProfile, "id" | "isVerified" | "views" | "contactClicks" | "verificationStatus" | "createdAt" | "updatedAt">) {
     await SecurityService.enforceRateLimit("business_register");
     const colRef = collection(db, "businesses");
     const docRef = await addDoc(colRef, {
@@ -70,10 +66,7 @@ class BusinessService {
       address: sanitizeText(business.address, 300),
       verificationStatus: "none",
       isVerified: false,
-      isPremium: false,
-      subscriptionPlan: 'free',
-      featuredUntil: null,
-      promotionLevel: 0,
+
       views: 0,
       contactClicks: 0,
       createdAt: serverTimestamp(),
@@ -97,15 +90,12 @@ class BusinessService {
     const snapshot = await getDocs(q);
     const businesses = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as BusinessProfile));
     
-    // Sort locally by Premium Status (Featured), Verification, then Promotion Level
+    // Sort locally by Verification
     return businesses.sort((a: any, b: any) => {
-      if (a.isPremium !== b.isPremium) {
-        return a.isPremium ? -1 : 1;
-      }
       if (a.isVerified !== b.isVerified) {
         return a.isVerified ? -1 : 1;
       }
-      return (b.promotionLevel || 0) - (a.promotionLevel || 0);
+      return 0;
     });
   }
 

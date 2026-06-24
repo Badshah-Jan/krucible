@@ -20,33 +20,29 @@ import {
 interface PostCardProps {
   post: FirestorePost | any;
   onPress?: () => void;
-  onLikePress?: () => void;
   onCommentPress?: () => void;
 }
 
-// Category config — color + emoji
-const CATEGORY_CONFIG: Record<string, { color: string; bg: string; emoji: string; label: string }> = {
-  emergency: { color: Colors.danger, bg: Colors.dangerLight, emoji: "🚨", label: "Emergency" },
-  help:       { color: "#D97706", bg: "#FEF3C7", emoji: "🤝", label: "Help" },
-  lost_found: { color: "#2563EB", bg: "#EFF6FF", emoji: "🔍", label: "Lost & Found" },
-  "lost & found": { color: "#2563EB", bg: "#EFF6FF", emoji: "🔍", label: "Lost & Found" },
-  recommendations: { color: Colors.primary, bg: Colors.primaryLight, emoji: "⭐", label: "Recommend" },
-  services:   { color: "#7C3AED", bg: "#F5F3FF", emoji: "🔧", label: "Services" },
-  general:    { color: Colors.textSecondary, bg: Colors.surface, emoji: "💬", label: "General" },
+// Structured community category config — 5 types only
+const CATEGORY_CONFIG: Record<string, { color: string; bg: string; emoji: string; label: string; actionLabel: string }> = {
+  // Firestore values (case-insensitive match below)
+  "need help":       { color: "#2563EB", bg: "#DBEAFE", emoji: "🤝", label: "Need Help", actionLabel: "I can help" },
+  "offer help":      { color: "#10B981", bg: "#D1FAE5", emoji: "💚", label: "Offer Help", actionLabel: "I need this" },
+  "recommendations": { color: "#7C3AED", bg: "#EDE9FE", emoji: "⭐", label: "Recommendation", actionLabel: "Useful" },
+  "lost & found":    { color: "#D97706", bg: "#FEF3C7", emoji: "🔍", label: "Lost & Found", actionLabel: "I found it" },
+  "emergency":       { color: Colors.danger, bg: Colors.dangerLight, emoji: "🚨", label: "Emergency", actionLabel: "Respond" },
+  // Fallback
+  "default":         { color: Colors.textSecondary, bg: Colors.surface, emoji: "📌", label: "Post", actionLabel: "View" },
 };
 
 function getCatConfig(cat: string) {
-  const key = cat?.toLowerCase();
-  return (
-    CATEGORY_CONFIG[key] ||
-    CATEGORY_CONFIG["general"]
-  );
+  const key = cat?.toLowerCase() ?? "";
+  return CATEGORY_CONFIG[key] ?? CATEGORY_CONFIG["default"];
 }
 
 const PostCard = ({
   post,
   onPress,
-  onLikePress,
   onCommentPress,
 }: PostCardProps) => {
   const [isEditing, setIsEditing] = React.useState(false);
@@ -153,41 +149,27 @@ const PostCard = ({
 
       {/* ── Footer ── */}
       <View style={styles.footer}>
-        <View style={styles.actions}>
-          {!post.isSos && (
-            <TouchableOpacity style={styles.actionBtn} onPress={onLikePress} hitSlop={8}>
-              <Ionicons
-                name={post.likedByMe ? "heart" : "heart-outline"}
-                size={19}
-                color={post.likedByMe ? Colors.danger : Colors.textSecondary}
-              />
-              {post.likes > 0 && (
-                <Text style={[styles.actionCount, post.likedByMe && { color: Colors.danger }]}>
-                  {post.likes}
-                </Text>
-              )}
-            </TouchableOpacity>
+        {/* Comment count */}
+        <TouchableOpacity style={styles.actionBtn} onPress={onCommentPress} hitSlop={8}>
+          <Ionicons name="list-outline" size={16} color={Colors.textSecondary} />
+          {post.commentsCount > 0 && (
+            <Text style={styles.actionCount}>{post.commentsCount} Responses</Text>
           )}
-          <TouchableOpacity style={styles.actionBtn} onPress={onCommentPress} hitSlop={8}>
-            <Ionicons name="chatbubble-outline" size={18} color={Colors.textSecondary} />
-            {post.commentsCount > 0 && (
-              <Text style={styles.actionCount}>{post.commentsCount}</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => Share.share({ message: post.title || post.description || "" })}
-            hitSlop={8}
-          >
-            <Ionicons name="arrow-redo-outline" size={18} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
+          {!post.commentsCount && (
+            <Text style={styles.actionCount}>Respond</Text>
+          )}
+        </TouchableOpacity>
 
-        {isEmergency && (
-          <TouchableOpacity style={styles.respondBtn} onPress={onPress} activeOpacity={0.85}>
-            <Text style={styles.respondText}>Respond →</Text>
-          </TouchableOpacity>
-        )}
+        {/* Contextual action button based on category */}
+        <TouchableOpacity
+          style={[styles.actionCta, { backgroundColor: catConfig.bg, borderColor: catConfig.color + '40' }]}
+          onPress={onPress}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.actionCtaText, { color: catConfig.color }]}>
+            {catConfig.actionLabel} →
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Options Sheet ── */}
@@ -284,8 +266,8 @@ const PostCard = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.card,
-    borderRadius: 12,
-    marginBottom: 10,
+    borderRadius: 8,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: Colors.border,
     overflow: "hidden",
@@ -308,23 +290,23 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 6,
     backgroundColor: Colors.surface,
     flexShrink: 0,
   },
   headerMeta: { flex: 1 },
   authorName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
     color: Colors.text,
   },
   metaLine: {
     fontSize: 11,
     color: Colors.textSecondary,
-    marginTop: 1,
-    fontWeight: "400",
+    marginTop: 2,
+    fontWeight: "500",
   },
   headerRight: {
     flexDirection: "row",
@@ -333,13 +315,15 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   catBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
   },
   catText: {
-    fontSize: 9,
-    fontWeight: "600",
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   moreBtn: {
     width: 28,
@@ -361,16 +345,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   title: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: Colors.text,
-    marginBottom: 4,
-    lineHeight: 19,
+    marginBottom: 6,
+    lineHeight: 20,
   },
   description: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 18,
+    fontSize: 14,
+    color: Colors.text,
+    lineHeight: 20,
     fontWeight: "400",
   },
 
@@ -383,20 +367,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  actions: { flexDirection: "row", alignItems: "center", gap: 16 },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   actionCount: {
     fontSize: 12,
     fontWeight: "500",
     color: Colors.textSecondary,
   },
-  respondBtn: {
-    backgroundColor: Colors.danger,
+  actionCta: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
   },
-  respondText: { color: "#FFFFFF", fontSize: 11, fontWeight: "600" },
+  actionCtaText: { fontSize: 11, fontWeight: "700" },
 
   // Bottom Sheet
   sheetOverlay: {
@@ -489,9 +472,7 @@ const styles = StyleSheet.create({
 
 export default React.memo(PostCard, (prev, next) => {
   if (prev.post.id !== next.post.id) return false;
-  if (prev.post.likes !== next.post.likes) return false;
   if (prev.post.commentsCount !== next.post.commentsCount) return false;
-  if (prev.post.likedByMe !== next.post.likedByMe) return false;
   if (prev.post.title !== next.post.title) return false;
   if (prev.post.description !== next.post.description) return false;
   return true;

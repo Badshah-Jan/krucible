@@ -54,7 +54,9 @@ export type ConversationContext = "personal" | "business" | "service";
 export interface Conversation {
   id?: string;
   type: ConversationType;
-  context?: ConversationContext;
+  context?: "personal" | "business" | "service" | "community";
+  contextId?: string | null;
+  contextTitle?: string | null;
   participants: string[];
   participantNames?: Record<string, string>;
   communityId?: string;
@@ -87,9 +89,14 @@ export class ChatService {
     uid2: string,
     name1: string,
     name2: string,
-    context: "personal" | "business" | "service" = "personal"
+    context: "personal" | "business" | "service" = "personal",
+    contextId?: string,
+    contextTitle?: string
   ): Promise<string> {
-    const roomId = ["dm", uid1, uid2].sort().join("_");
+    const roomId = context === "personal" || !contextId
+      ? ["dm", uid1, uid2].sort().join("_")
+      : ["dm", context, contextId, uid1, uid2].sort().join("_");
+
     const ref = doc(db, "conversations", roomId);
     const snap = await getDoc(ref);
 
@@ -97,6 +104,8 @@ export class ChatService {
       await setDoc(ref, {
         type: "dm",
         context,
+        contextId: contextId || null,
+        contextTitle: contextTitle || null,
         participants: [uid1, uid2],
         participantNames: { [uid1]: name1, [uid2]: name2 },
         lastMessage: "",

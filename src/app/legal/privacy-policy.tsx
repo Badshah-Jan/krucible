@@ -17,7 +17,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Body({ children }: { children: string }) {
+function Body({ children }: { children: React.ReactNode }) {
   return <Text style={styles.body}>{children}</Text>;
 }
 
@@ -94,9 +94,6 @@ export default function PrivacyPolicyScreen() {
             <Bullet>Business and service listing information you create (name, description, contact details, images, location)</Bullet>
             <Bullet>Reviews and ratings you submit for businesses or service providers</Bullet>
 
-            <SubTitle>1.7 Reputation Data</SubTitle>
-            <Bullet>Karma points and karma history — awarded for community contributions; has no monetary value</Bullet>
-
             <SubTitle>1.8 Safety and Moderation Data</SubTitle>
             <Bullet>Reports you submit against content or other users</Bullet>
             <Bullet>Security event logs (e.g., failed login attempts) — used to detect abuse and protect users</Bullet>
@@ -115,7 +112,7 @@ export default function PrivacyPolicyScreen() {
             <Bullet>To operate the local marketplace and service provider listings</Bullet>
             <Bullet>To enforce community guidelines and investigate reported content</Bullet>
             <Bullet>To protect the security and integrity of the platform through rate limiting and abuse detection</Bullet>
-            <Bullet>To award and track Karma reputation points</Bullet>
+
           </Section>
 
           <Section title="3. Third-Party Services">
@@ -141,7 +138,7 @@ export default function PrivacyPolicyScreen() {
 
           <Section title="4. Data Retention">
             <Bullet>Your data is retained for as long as your account is active</Bullet>
-            <Bullet>When you delete your account, all personal data (profile, posts, messages, listings, media, karma) is permanently removed</Bullet>
+            <Bullet>When you delete your account, all personal data (profile, posts, messages, listings, media) is permanently removed</Bullet>
             <Bullet>Security logs and rate-limit records may be retained for up to 30 days for platform integrity purposes</Bullet>
             <Bullet>Deleted content is permanently removed and cannot be recovered</Bullet>
           </Section>
@@ -157,7 +154,7 @@ export default function PrivacyPolicyScreen() {
             <Body>You can manage notification categories (SOS alerts, messages, community updates) in Settings → Notifications.</Body>
 
             <SubTitle>Account Deletion</SubTitle>
-            <Body>You may permanently delete your account in Settings → Danger Zone → Delete Account. Deletion is irreversible and removes all associated data including posts, messages, business listings, images, karma history, emergency contacts, and your authentication record.</Body>
+            <Body>You may permanently delete your account in Settings → Danger Zone → Delete Account. Deletion is irreversible and removes all associated data including posts, messages, business listings, images, emergency contacts, and your authentication record.</Body>
           </Section>
 
           <Section title="6. Data Security">

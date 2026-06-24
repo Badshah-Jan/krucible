@@ -37,12 +37,6 @@ export interface ServiceProvider {
   // Freemium Monetization & Admin Fields
   verificationStatus: "none" | "pending" | "approved" | "rejected";
   isVerified: boolean;
-  isPremium: boolean;
-  subscriptionPlan: 'free' | 'premium';
-  featuredUntil: any | null;
-  promotionLevel?: number;
-  views?: number;
-  contactClicks?: number;
 
   createdAt?: any;
   updatedAt?: any;
@@ -72,7 +66,7 @@ export const CATEGORIES = [
 ];
 
 class ProviderService {
-  async registerProvider(provider: Omit<ServiceProvider, "id" | "rating" | "reviewCount" | "createdAt" | "updatedAt" | "isVerified" | "isPremium" | "subscriptionPlan" | "featuredUntil" | "views" | "contactClicks" | "promotionLevel" | "verificationStatus" | "availabilityStatus">) {
+  async registerProvider(provider: Omit<ServiceProvider, "id" | "rating" | "reviewCount" | "createdAt" | "updatedAt" | "isVerified" | "verificationStatus" | "availabilityStatus">) {
     await SecurityService.enforceRateLimit("service_register");
     const colRef = collection(db, "services");
     const docRef = await addDoc(colRef, {
@@ -83,12 +77,7 @@ class ProviderService {
       reviewCount: 0,
       verificationStatus: "none",
       isVerified: false,
-      isPremium: false,
-      subscriptionPlan: 'free',
-      featuredUntil: null,
-      promotionLevel: 0,
-      views: 0,
-      contactClicks: 0,
+
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -130,9 +119,7 @@ class ProviderService {
     // 3. Then by availability
     // 4. Then by rating
     return services.sort((a: any, b: any) => {
-      if (a.isPremium !== b.isPremium) {
-        return a.isPremium ? -1 : 1;
-      }
+
       if (a.isVerified !== b.isVerified) {
         return a.isVerified ? -1 : 1;
       }

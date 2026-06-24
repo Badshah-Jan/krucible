@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, updateDoc, writeBatch, getDocs, where, deleteDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../firebase';
-import { Ban, Trash2, CheckCircle, Users as UsersIcon, Search } from 'lucide-react';
+import { db, functions, auth } from '../firebase';
+import { Ban, Trash2, CheckCircle, Users as UsersIcon, Search, LogOut } from 'lucide-react';
 import type { QuerySnapshot, DocumentData, FirestoreError } from 'firebase/firestore';
 import { mapQuerySnapshot, withDocId } from '../utils/firestore';
 
@@ -47,34 +47,82 @@ export default function Users() {
   };
 
   const deleteUserRecord = async (userId: string) => {
-    if (confirm("Are you sure you want to completely delete this user record? This will delete their Auth account and Firestore document. This action cannot be undone.")) {
+    if (confirm("Are you sure you want to completely delete this user record? (Note: On the free plan, their Auth account will become a ghost account and will be automatically purged on their next login).")) {
       try {
-        const deleteUserFn = httpsCallable(functions, 'adminDeleteUser');
-        await deleteUserFn({ targetUid: userId });
-        alert("User completely deleted.");
+        try {
+          const deleteUserFn = httpsCallable(functions, 'adminDeleteUser');
+          await deleteUserFn({ targetUid: userId });
+          alert("User completely deleted via Cloud Functions.");
+          return;
+        } catch (e: any) {
+          console.warn("Cloud function failed (expected if not on Blaze plan), falling back to client-side deletion.");
+        }
+
+        console.log("Starting client-side deletion fallback (sequential)...");
+        console.log("LOGGED IN AS:", auth.currentUser?.email);
+        console.log("Current Auth UID:", auth.currentUser?.uid);
+        
+        console.log("1. Querying posts...");
+        const postsSnap = await getDocs(query(collection(db, "posts"), where("userId", "==", userId)));
+        for (const d of postsSnap.docs) {
+          try { await deleteDoc(d.ref); } catch(e) { console.error("Failed to delete post:", d.id, e); }
+        }
+
+        console.log("2. Querying services...");
+        const servicesSnap = await getDocs(query(collection(db, "services"), where("userId", "==", userId)));
+        for (const d of servicesSnap.docs) {
+          try { await deleteDoc(d.ref); } catch(e) { console.error("Failed to delete service:", d.id, e); }
+        }
+
+        console.log("3. Querying businesses...");
+        const businessesSnap = await getDocs(query(collection(db, "businesses"), where("userId", "==", userId)));
+        for (const d of businessesSnap.docs) {
+          try { await deleteDoc(d.ref); } catch(e) { console.error("Failed to delete business:", d.id, e); }
+        }
+
+        console.log("4. Deleting user doc...");
+        try { 
+          await deleteDoc(doc(db, "users", userId)); 
+        } catch(e) { 
+          console.error("Failed to delete user doc:", e); 
+          throw e; // Rethrow because this is critical
+        }
+
+        console.log("All data successfully deleted.");
+        alert("User data successfully wiped from Firestore! (Ghost auth will self-clean).");
       } catch (e: any) {
-        console.error(e);
+        console.error("Deletion Error:", e);
         alert(`Failed to delete user: ${e.message || 'Check permissions'}`);
       }
     }
   };
 
+  // Hide the admin account from the users list
+  const ADMIN_EMAIL = 'badshahkha656@gmail.com';
+
   const filteredUsers = useMemo(() => {
-    if (!searchQuery.trim()) return users;
-    const lowerQuery = searchQuery.toLowerCase();
-    return users.filter(u => 
-      u.name?.toLowerCase().includes(lowerQuery) || 
-      u.email?.toLowerCase().includes(lowerQuery) ||
-      u.id?.toLowerCase().includes(lowerQuery)
-    );
+    let result = users.filter(u => u.email !== ADMIN_EMAIL);
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      result = result.filter(u => 
+        u.name?.toLowerCase().includes(lowerQuery) || 
+        u.email?.toLowerCase().includes(lowerQuery) ||
+        u.id?.toLowerCase().includes(lowerQuery)
+      );
+    }
+    return result;
   }, [users, searchQuery]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white flex items-center"><UsersIcon className="w-6 h-6 mr-2 text-primary" /> User Management</h1>
-        <div className="text-sm text-green-400 flex items-center">
-          <div className="w-2 h-2 rounded-full bg-green-400 mr-2 animate-pulse"></div> Live Sync
+        <h1 className="text-2xl font-bold text-white flex items-center">
+          <UsersIcon className="w-6 h-6 mr-2 text-primary" /> User Management
+        </h1>
+        <div className="flex items-center space-x-4">
+          <div className="text-sm text-green-400 flex items-center">
+            <div className="w-2 h-2 rounded-full bg-green-400 mr-2 animate-pulse"></div> Live Sync
+          </div>
         </div>
       </div>
 

@@ -46,6 +46,7 @@ export interface PrivacySettings {
   activityVisible: boolean; // Show activity history
   locationVisible: boolean; // Show precise location vs community name only
   distanceVisible: boolean; // Show distance from other users
+  allowDirectMessages: boolean; // Allow incoming DMs
 }
 
 // ─── User Profile ─────────────────────────────────────────────────────────────
@@ -56,7 +57,6 @@ export interface UserProfile {
   bio?: string;
   email: string;
   photoURL: string;
-  karma: number;
 
   latitude?: number;
   longitude?: number;
@@ -82,7 +82,7 @@ export interface UserProfile {
     sos: boolean;
     mentions: boolean;
     messages: boolean;
-    karma: boolean;
+
     community: boolean;
     recommendations: boolean;
     lostAndFound: boolean;
@@ -97,11 +97,15 @@ export interface UserProfile {
   emergencyContacts?: EmergencyContact[];
   // Location
   locationEnabled?: boolean;
+  locationRadius?: number; // 1, 5, 10, 25
   lastLocationUpdate?: any;
   isOnline?: boolean;
   lastSeen?: any;
-  // Monetization
-  isPremium?: boolean;
+
+  // Reputation & Verification
+  trustScore?: number;
+  isVerified?: boolean;
+
   // Authorization
   role?: UserRole;
   emailVerified?: boolean;
@@ -115,7 +119,6 @@ export type PublicUserProfile = Pick<
   | "handle"
   | "bio"
   | "photoURL"
-  | "karma"
 
   | "communityId"
   | "communityName"
@@ -127,18 +130,17 @@ export type PublicUserProfile = Pick<
   | "privacySettings"
   | "isOnline"
   | "lastSeen"
-  | "isPremium"
   | "createdAt"
   | "lastActive"
 > & {
-  // Exact coordinates intentionally omitted from public profiles for privacy
+  // Exact coordinates only included when user has locationVisible enabled
+  latitude?: number;
+  longitude?: number;
 };
 
 const PROTECTED_PROFILE_FIELDS = [
   "role",
-  "karma",
 
-  "isPremium",
   "isVerified",
   "postsCount",
   "commentsCount",
@@ -161,7 +163,6 @@ export class UserService {
       handle: profile.handle,
       bio: profile.bio,
       photoURL: profile.photoURL,
-      karma: profile.karma,
 
       communityId: profile.communityId,
       communityName: profile.communityName,
@@ -173,7 +174,6 @@ export class UserService {
       privacySettings: profile.privacySettings,
       isOnline: profile.isOnline,
       lastSeen: profile.lastSeen,
-      isPremium: profile.isPremium,
       createdAt: profile.createdAt,
       lastActive: profile.lastActive,
     };
@@ -245,6 +245,36 @@ export class UserService {
       console.error("Error fetching users by community:", error);
       return [];
     }
+  }
+
+  /**
+   * Real-time subscription to all neighbors in a community.
+   * Fires immediately when a user joins, updates their profile,
+   * or has their account deleted by admin — zero manual refresh needed.
+   */
+  static subscribeToNeighborsByCommunity(
+    communityId: string,
+    callback: (neighbors: PublicUserProfile[]) => void,
+    onError?: (err: Error) => void,
+  ): () => void {
+    const q = query(
+      collection(db, "users"),
+      where("communityId", "==", communityId),
+      limit(150),
+    );
+    return onSnapshot(
+      q,
+      (snap) => {
+        const neighbors = snap.docs.map((d) =>
+          this.toPublicProfile(d.data() as UserProfile),
+        );
+        callback(neighbors);
+      },
+      (error) => {
+        console.error("[UserService] Neighbors subscription error:", error);
+        onError?.(error);
+      },
+    );
   }
 
   static async getUsersByRadius(
@@ -446,12 +476,17 @@ export class UserService {
   ): Promise<void> {
     try {
       const docRef = doc(db, "users", uid);
+      
+      // Safety check: Don't overwrite if it already exists to avoid hitting strict 'update' rules.
+      const snap = await getDoc(docRef);
+      if (snap.exists()) return;
+
       await setDoc(docRef, {
         ...this.stripProtectedFields(data),
         uid,
         email: data.email || "no-email@neighborly.com", // Add back email since it's a protected field
         role: "user",
-        karma: 0,
+
         postsCount: 0,
         commentsCount: 0,
         bio: "",
@@ -470,7 +505,7 @@ export class UserService {
           sos: true,
           mentions: true,
           messages: true,
-          karma: true,
+
           community: true,
           recommendations: true,
           lostAndFound: true,
@@ -515,7 +550,7 @@ export class UserService {
         sos: true,
         mentions: true,
         messages: true,
-        karma: true,
+
         community: true,
         recommendations: true,
         lostAndFound: true,
@@ -547,9 +582,10 @@ export class UserService {
         activityVisible: true,
         locationVisible: true,
         distanceVisible: true,
+        allowDirectMessages: true,
         ...(current?.privacySettings || {}),
-        ...settings,
-      };
+        ...Object.fromEntries(Object.entries(settings).filter(([_, v]) => v !== undefined)),
+      } as PrivacySettings;
 
       await setDoc(docRef, {
         privacySettings: updatedSettings,
@@ -678,42 +714,7 @@ export class UserService {
     }
   }
 
-  // ── Karma ─────────────────────────────────────────────────────────────────
 
-  static async incrementKarma(
-    uid: string,
-    amount: number,
-    reason: string = "Your helpful contribution was appreciated",
-  ): Promise<void> {
-    try {
-      await SecurityService.awardKarma(uid, amount, reason);
-
-      // ─── Send karma notification ────────────────────────────────────────
-      if (amount > 0) {
-        try {
-          // Avoid circular dependency by getting singleton instance or using the class method
-          await NotificationService.sendInAppNotification(
-            uid,
-            `⭐ +${amount} Karma Points!`,
-            reason,
-            "karma_reward",
-            {
-              points: amount,
-              reason,
-            },
-          );
-        } catch (notifError) {
-          console.warn(
-            "[UserService] Karma notification failed (non-critical):",
-            notifError,
-          );
-        }
-      }
-      // ─── END: Karma notification ────────────────────────────────────────
-    } catch (error) {
-      console.warn("Karma increment failed (expected if cloud functions are missing):", error);
-    }
-  }
 
   static async incrementPostsCount(uid: string): Promise<void> {
     try {
@@ -761,29 +762,7 @@ export class UserService {
     );
   }
 
-  static subscribeToKarmaHistory(
-    uid: string,
-    callback: (history: any[]) => void
-  ) {
-    const q = query(
-      collection(db, "users", uid, "karma_history"),
-      orderBy("createdAt", "desc"),
-      limit(50)
-    );
-    return onSnapshot(
-      q,
-      (snapshot: any) => {
-        const history = snapshot.docs.map((d: any) => ({
-          id: d.id,
-          ...d.data()
-        }));
-        callback(history);
-      },
-      (error: any) => {
-        console.warn("Subscription warning (karma history):", error?.message || error);
-      }
-    );
-  }
+
 
   static async cleanupUserData(uid: string): Promise<void> {
     try {
@@ -875,11 +854,6 @@ export class UserService {
       const postsQ = query(collection(db, "posts"), where("userId", "==", uid));
       await processQuery(postsQ, true, undefined, ['mediaUrls', 'image', 'imageUrl']);
       
-      const likedPostsQ = query(collection(db, "posts"), where("likedBy", "array-contains", uid));
-      await processQuery(likedPostsQ, false, { 
-        likedBy: arrayRemove(uid),
-        likes: increment(-1) 
-      });
 
       // 2. Comments & Messages (Collection Group allowed by new rules)
       const commentsQ = query(collectionGroup(db, "comments"), where("userId", "==", uid));
@@ -911,11 +885,6 @@ export class UserService {
       // 7. Notifications
       const notifQ = query(collection(db, "notifications"), where("userId", "==", uid));
       await processQuery(notifQ);
-
-      // 8. Karma History
-      const karmaQ = collection(db, "users", uid, "karma_history");
-      await processQuery(karmaQ);
-
       // 9. Conversations (DMs vs Community)
       try {
         const convsQ = query(collection(db, "conversations"), where("participants", "array-contains", uid));

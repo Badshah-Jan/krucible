@@ -8,6 +8,7 @@ import ProviderService, { CATEGORIES } from '@/services/providerService';
 import { useAppStore } from '@/store/appStore';
 import { AuthService } from '@/services/authService';
 import { UserService } from "@/services/userService";
+import { UI } from '@/store/uiStore';
 import { Colors } from '@/constants/colors';
 
 export default function RegisterServiceScreen() {
@@ -42,18 +43,18 @@ export default function RegisterServiceScreen() {
 
   const handleRegister = async () => {
     if (!name.trim() || !about.trim() || !phone.trim()) {
-      Alert.alert('Missing Fields', 'Please fill out all required fields.');
+      UI.error('Missing Fields', 'Please fill out all required fields.');
       return;
     }
 
     const user = AuthService.getCurrentUser();
     if (!user) {
-      Alert.alert('Error', 'You must be logged in.');
+      UI.error('Error', 'You must be logged in.');
       return;
     }
 
     if (!community?.communityId || !coordinates) {
-      Alert.alert('Error', 'We could not detect your community or location.');
+      UI.error('Location Error', 'We could not detect your community or location.');
       return;
     }
 
@@ -73,11 +74,10 @@ export default function RegisterServiceScreen() {
           address: community.name || ''
         }
       });
-      Alert.alert('Success!', 'Your service profile has been created.', [
-        { text: 'Done', onPress: () => router.back() }
-      ]);
+      UI.success('Success!', 'Your service profile has been created.');
+      router.back();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to register. Try again.');
+      UI.error('Registration Failed', e.message || 'Failed to register. Try again.');
     } finally {
       setLoading(false);
     }

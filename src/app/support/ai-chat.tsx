@@ -35,7 +35,7 @@ const AI_RESPONSES: Record<string, string> = {
   'emergency': 'For emergencies, use the SOS Alert feature on the home screen. For non-urgent help, create a post in the Help Requests category.',
   'location': 'Your location is only shared when you create a post or SOS alert. You can control location sharing in Settings > Privacy > Location Visibility.',
   'block': 'To block a user: Go to their profile > tap the three dots menu > select "Block User". Manage blocked users in Settings > Blocked Users.',
-  'karma': 'Karma points are earned by: Responding to SOS alerts (+50), Helping neighbors (+20), Creating helpful posts (+10), and receiving likes (+5).',
+
   'delete': 'To delete your account: Go to Settings > scroll down > tap "Delete Account". Note: This permanently deletes all your data and cannot be undone.',
   'notification': 'Manage notifications in Settings > Notifications. You can toggle different notification types like SOS alerts, chat messages, and community updates.',
   'privacy': 'Control your privacy in Settings > Privacy & Safety. You can manage profile visibility, activity status, location sharing, and distance display.',
@@ -51,7 +51,7 @@ function getAIResponse(userMessage: string): string {
     }
   }
   
-  return "I'm here to help! You can ask me about SOS alerts, location settings, blocking users, karma points, notifications, privacy settings, or how to contact support. What would you like to know?";
+  return "I'm here to help! You can ask me about SOS alerts, location settings, blocking users, notifications, privacy settings, or how to contact support. What would you like to know?";
 }
 
 export default function AIChatScreen() {
@@ -119,7 +119,6 @@ export default function AIChatScreen() {
     'How do I send SOS?',
     'Location settings',
     'Block a user',
-    'Karma points',
   ];
 
   return (

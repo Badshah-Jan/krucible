@@ -17,11 +17,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Body({ children }: { children: string }) {
+function Body({ children }: { children: React.ReactNode }) {
   return <Text style={styles.body}>{children}</Text>;
 }
 
-function Bullet({ children }: { children: string }) {
+function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <View style={styles.bulletRow}>
       <Text style={styles.bulletDot}>•</Text>
@@ -120,8 +120,6 @@ export default function TermsOfServiceScreen() {
             <Bullet>You are solely responsible for performing your own due diligence before engaging any service provider</Bullet>
             <Bullet>Neighborly does not process any payments between users — all transactions are conducted independently off-platform</Bullet>
 
-            <SubTitle>Premium Listings</SubTitle>
-            <Body>Premium listing status indicates an admin-approved visibility enhancement only. It does not constitute an endorsement, certification, or guarantee of any service provider's quality or reliability. Premium status is granted by Neighborly administrators following a review of the request.</Body>
           </Section>
 
           <Section title="6. SOS Emergency Feature Disclaimer">
@@ -133,13 +131,6 @@ export default function TermsOfServiceScreen() {
             <Bullet>Neighborly bears no liability whatsoever for any outcome, injury, loss, or death arising from use of or reliance on the SOS feature</Bullet>
             <Bullet>Misuse of SOS alerts (including fake alerts, test alerts, or repeated abuse) may result in immediate account suspension</Bullet>
             <Bullet>SOS alerts automatically expire based on alert type; expired alerts do not indicate that an emergency has been resolved</Bullet>
-          </Section>
-
-          <Section title="7. Karma and Reputation">
-            <Body>Neighborly's Karma system rewards positive community contributions. You acknowledge that:</Body>
-            <Bullet>Karma points have no monetary value and cannot be transferred, sold, redeemed, or exchanged</Bullet>
-            <Bullet>Karma points are awarded at the discretion of the platform and may be adjusted by administrators</Bullet>
-            <Bullet>Karma levels and badges are indicators of community participation only and do not confer any rights or privileges outside the platform</Bullet>
           </Section>
 
           <Section title="8. Content You Post">

@@ -41,8 +41,7 @@ const originalAlert = RNAlert.alert;
 RNAlert.alert = (title, message, buttons, options) => {
   if (
     !buttons ||
-    buttons.length === 0 ||
-    (buttons.length === 1 && !buttons[0].onPress)
+    buttons.length === 0
   ) {
     // Simple notification alert -> Route to Custom Toast
     const isError =
@@ -65,6 +64,20 @@ RNAlert.alert = (title, message, buttons, options) => {
             ? "warning"
             : "info",
       message || "",
+    );
+    return;
+  }
+
+  if (buttons.length === 1) {
+    const isError = title?.toLowerCase().includes("error") || title?.toLowerCase().includes("fail") || title?.toLowerCase().includes("required");
+    const isSuccess = title?.toLowerCase().includes("success") || title?.toLowerCase().includes("updated") || title?.toLowerCase().includes("created");
+    
+    UI.alert(
+      title || "Notification",
+      message || "",
+      isError ? "danger" : isSuccess ? "success" : "info",
+      buttons[0].onPress,
+      buttons[0].text || "OK"
     );
     return;
   }
@@ -187,7 +200,6 @@ export default function RootLayout() {
           case "comment":
           case "comment_reply":
           case "help_request":
-          case "like_notification":
             if (data.postId) {
               console.log("[Navigation] Executed navigation to Post:", data.postId);
               router.push(`/post/${data.postId}`);
@@ -199,11 +211,6 @@ export default function RootLayout() {
               console.log("[Navigation] Executed navigation to Chat:", data.chatId);
               router.push(`/chat/${data.chatId}`);
             }
-            break;
-
-          case "karma_reward":
-            console.log("[Navigation] Executed navigation to Karma");
-            router.push("/karma");
             break;
 
           case "community_update":
@@ -276,20 +283,60 @@ export default function RootLayout() {
           }
           
           if (!profile && !profileLoadError) {
-            // Only force-delete if the profile is definitively missing AND it's not a brand new signup.
-            // (Brand new signups won't have a profile for ~500ms while login.tsx creates it)
-            const creationTime = new Date(user.metadata?.creationTime || 0).getTime();
-            const isBrandNewUser = Date.now() - creationTime < 2 * 60 * 1000; // < 2 minutes old
+            // Only force-recreate if the profile is definitively missing AND it's not a fresh login.
+            // (Fresh logins won't have a profile for ~500ms while login.tsx creates it)
+            const lastSignIn = new Date(user.metadata?.lastSignInTime || 0).getTime();
+            const isFreshLogin = Date.now() - lastSignIn < 2 * 60 * 1000; // < 2 minutes old
             
-            if (isBrandNewUser) {
+            if (isFreshLogin) {
               console.log("[Auth] Brand new user detected without profile yet. Giving login screen time to create it.");
               // Do not return here, let auth initialize so login.tsx can do its job.
             } else {
-              console.warn("[Auth] User document genuinely missing. Forcing ghost account deletion.");
-              try { await user.delete(); } catch { await AuthService.logout(); }
-              logout();
-              setAuthInitialized(true);
-              return;
+              console.warn("[Auth] User document genuinely missing. Recreating basic profile for ghost account.");
+              try {
+                // Use setDoc with merge to bypass strict create rules
+                const { doc: firestoreDoc, setDoc, serverTimestamp } = require('firebase/firestore');
+                const { db } = require('@/services/firebase');
+                const userRef = firestoreDoc(db, "users", user.uid);
+                await setDoc(userRef, {
+                  uid: user.uid,
+                  name: user.displayName || 'Recovered User',
+                  email: user.email || 'no-email@neighborly.com',
+                  photoURL: user.photoURL || '',
+                  role: 'user',
+                  bio: '',
+                  handle: '',
+                  postsCount: 0,
+                  commentsCount: 0,
+                  blockedUsers: [],
+                  emergencyContacts: [],
+                  privacySettings: {
+                    profileVisible: true,
+                    activityVisible: true,
+                    locationVisible: true,
+                    distanceVisible: true,
+                  },
+                  notificationPreferences: {
+                    pushEnabled: true,
+                    emailAlerts: true,
+                    sos: true,
+                    mentions: true,
+                    messages: true,
+                    community: true,
+                    recommendations: true,
+                    lostAndFound: true,
+                  },
+                  createdAt: serverTimestamp(),
+                  lastActive: serverTimestamp(),
+                }, { merge: true });
+                console.log("[Auth] Ghost profile recovered successfully.");
+                profile = await UserService.getOwnProfile(user.uid);
+              } catch (e) {
+                console.error("Failed to recover ghost profile", e);
+                await AuthService.logout();
+                logout();
+                setAuthInitialized(true);
+              }
             }
           }
 

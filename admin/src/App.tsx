@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+
+// ── Permanent Admin ──────────────────────────────────────────────────────────
+const ADMIN_EMAIL = 'badshahkha656@gmail.com';
 import { LayoutDashboard, Users as UsersIcon, MessageSquare, AlertTriangle, Briefcase, Store, Shield, Settings as SettingsIcon, LogOut, Search, Bell, Star } from 'lucide-react';
 import Users from './pages/Users';
 import SOSCenter from './pages/SOS';
@@ -13,7 +16,7 @@ import Notifications from './pages/Notifications';
 import Premium from './pages/Premium';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signOut, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import type { QuerySnapshot, DocumentData } from 'firebase/firestore';
@@ -25,7 +28,7 @@ interface PendingProviderAction {
   verified?: boolean;
 }
 
-function Sidebar() {
+function Sidebar({ onSignOut }: { onSignOut: () => void }) {
   const location = useLocation();
   
   const navItems = [
@@ -74,7 +77,10 @@ function Sidebar() {
       </div>
       
       <div className="p-4 border-t border-border">
-        <button className="flex items-center w-full px-3 py-2.5 rounded-lg text-gray-400 hover:bg-red-500/10 hover:text-red-500 transition-colors">
+        <button
+          onClick={onSignOut}
+          className="flex items-center w-full px-3 py-2.5 rounded-lg text-gray-400 hover:bg-red-500/10 hover:text-red-500 transition-colors"
+        >
           <LogOut className="w-5 h-5 mr-3" />
           <span className="font-medium text-sm">Sign Out</span>
         </button>
@@ -239,10 +245,19 @@ function Dashboard() {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   React.useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+      if (u && u.email !== ADMIN_EMAIL) {
+        // Not the authorized admin — sign them out immediately
+        signOut(auth);
+        setAccessDenied(true);
+        setUser(null);
+      } else {
+        setAccessDenied(false);
+        setUser(u);
+      }
       setAuthChecking(false);
     });
     return () => unsub();
@@ -250,13 +265,24 @@ export default function App() {
 
   const handleLogin = async () => {
     try {
+      setAccessDenied(false);
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      if (result.user.email !== ADMIN_EMAIL) {
+        await signOut(auth);
+        setAccessDenied(true);
+        setUser(null);
+      }
     } catch (e) {
       console.error(e);
       alert("Login failed. Ensure Google Auth is enabled in Firebase Console.");
     }
   };
+
+  const handleSignOut = useCallback(async () => {
+    await signOut(auth);
+    setUser(null);
+  }, []);
 
   if (authChecking) {
     return <div className="min-h-screen bg-darker flex items-center justify-center text-white">Loading Security Policies...</div>;
@@ -271,6 +297,12 @@ export default function App() {
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">Admin Portal</h1>
           <p className="text-gray-400 mb-8">Authenticate securely to access the Super Admin Dashboard and real-time database.</p>
+          {accessDenied && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+              <p className="text-red-400 font-semibold text-sm">⛔ Access Denied</p>
+              <p className="text-red-400/70 text-xs mt-1">Only the authorized administrator can access this panel.</p>
+            </div>
+          )}
           <button 
             onClick={handleLogin}
             className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
@@ -286,7 +318,7 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen bg-darker flex">
-        <Sidebar />
+        <Sidebar onSignOut={handleSignOut} />
         <div className="flex-1 ml-64 flex flex-col">
           <Header />
           <main className="flex-1 p-8 overflow-y-auto">

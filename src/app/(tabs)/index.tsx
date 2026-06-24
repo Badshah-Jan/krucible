@@ -30,7 +30,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Colors } from '@/constants/colors';
@@ -46,6 +46,7 @@ const T = {
   danger: Colors.danger,
   dangerBg: Colors.dangerLight,
   warning: Colors.warning,
+  accent: '#F59E0B',
 };
 
 // High-fidelity curated cover photos to represent categories elegantly
@@ -102,6 +103,36 @@ function getTimeAgo(ts: any): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
+function FloatingIcon({ source, delay, style }: { source: any, delay: number, style: any }) {
+  const translateY = useSharedValue(0);
+
+  useEffect(() => {
+    translateY.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(-4, { duration: 1500 }),
+          withTiming(0, { duration: 1500 })
+        ),
+        -1, // infinite
+        true // reverse
+      )
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+    };
+  });
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).springify()} style={[animatedStyle, s.actionIconWrap]}>
+      <Image source={source} style={style} contentFit="contain" />
+    </Animated.View>
+  );
+}
+
 export default function HomeFeedScreen() {
   const router = useRouter();
   const community = useAppStore((s) => s.primaryCommunity);
@@ -156,12 +187,15 @@ export default function HomeFeedScreen() {
 
   const activeCommunityId = community?.communityId ?? userProfile?.communityId;
 
-  // ── Load neighbors for search ──────────────────────────────────────────────
+  // ── Real-time neighbors subscription ──────────────────────────────────────
   useEffect(() => {
     if (!activeCommunityId) return;
-    UserService.getUsersByCommunity(activeCommunityId)
-      .then(setLocalNeighbors)
-      .catch((err) => console.warn("Could not load neighbors for search", err));
+    const unsub = UserService.subscribeToNeighborsByCommunity(
+      activeCommunityId,
+      (neighbors) => setLocalNeighbors(neighbors),
+      (err) => console.warn("[Home] Neighbors subscription error:", err),
+    );
+    return unsub;
   }, [activeCommunityId]);
 
   // ── Debounce search query 150ms ───────────────────────────────────────────
@@ -277,31 +311,7 @@ export default function HomeFeedScreen() {
   const cityName =
     communityDoc?.city || community?.city || userProfile?.city || "";
 
-  // ── Like handler ──────────────────────────────────────────────────────────
-  const handleLike = useCallback(
-    async (post: FirestorePost) => {
-      if (!me) return;
-      setLivePosts((curr) =>
-        curr.map((p) => {
-          if (p.id !== post.id) return p;
-          const liked = p.likedBy?.includes(me.uid) ?? false;
-          return {
-            ...p,
-            likesCount: liked
-              ? Math.max(0, (p.likesCount || 0) - 1)
-              : (p.likesCount || 0) + 1,
-            likedBy: liked
-              ? (p.likedBy ?? []).filter((u) => u !== me.uid)
-              : [...(p.likedBy ?? []), me.uid],
-          };
-        }),
-      );
-      try {
-        await PostService.toggleLike(post.id!, me.uid);
-      } catch {}
-    },
-    [me],
-  );
+
 
   // ── Feed items ──────────────────────────────────────────────────────────
   const feedItems = useMemo(() => {
@@ -324,9 +334,7 @@ export default function HomeFeedScreen() {
         userAvatar: "",
         timePosted: getTimeAgo(alert.createdAt),
         distance: dist,
-        likes: 0,
         commentsCount: alert.respondersCount || 0,
-        likedByMe: false,
         category: "Emergency",
         title: `🚨 ${alert.type}`,
         description: `Emergency reported in ${alert.location.area}. Status: ${alert.status.toUpperCase()}`,
@@ -354,19 +362,14 @@ export default function HomeFeedScreen() {
         userAvatar: post.userAvatar ?? "",
         timePosted: getTimeAgo(post.createdAt),
         distance: dist,
-        likes: post.likesCount ?? 0,
         commentsCount: post.commentsCount ?? 0,
-        likedByMe: me ? (post.likedBy?.includes(me.uid) ?? false) : false,
         isSos: false,
       };
     });
 
     const combined =
       selectedCategory === "all"
-        ? [
-            ...sosItems,
-            ...postItems,
-          ]
+        ? [...sosItems, ...postItems]
         : selectedCategory === "emergency"
           ? [
               ...sosItems,
@@ -382,17 +385,17 @@ export default function HomeFeedScreen() {
             });
 
     combined.sort((a, b) => {
-      const aTime = a.createdAt?.toDate 
-        ? a.createdAt.toDate().getTime() 
-        : (a.createdAt ? new Date(a.createdAt).getTime() : Date.now());
-      const bTime = b.createdAt?.toDate 
-        ? b.createdAt.toDate().getTime() 
-        : (b.createdAt ? new Date(b.createdAt).getTime() : Date.now());
+      const aTime = a.createdAt?.toDate
+        ? a.createdAt.toDate().getTime()
+        : a.createdAt ? new Date(a.createdAt).getTime() : Date.now();
+      const bTime = b.createdAt?.toDate
+        ? b.createdAt.toDate().getTime()
+        : b.createdAt ? new Date(b.createdAt).getTime() : Date.now();
       return bTime - aTime;
     });
 
     return combined;
-  }, [filtered, activeSosAlerts, coordinates, me]);
+  }, [filtered, activeSosAlerts, coordinates]);
 
   const liveActivities = useMemo(() => {
     const list: any[] = [];
@@ -409,11 +412,8 @@ export default function HomeFeedScreen() {
     });
 
     livePosts.forEach((post) => {
-      if (
-        post.category?.toLowerCase() === "help" ||
-        post.category?.toLowerCase() === "lost & found" ||
-        post.category?.toLowerCase() === "lost_found"
-      ) {
+      const cat = post.category?.toLowerCase();
+      if (cat === "need help" || cat === "lost & found") {
         let dist = "Nearby";
         if (coordinates && post.latitude && post.longitude) {
           dist = formatDistance(
@@ -428,16 +428,16 @@ export default function HomeFeedScreen() {
         list.push({
           id: post.id,
           category: post.category,
+          emoji: cat === "need help" ? "🤝" : "🔍",
           title: post.title || post.description,
           distance: dist,
           timePosted: getTimeAgo(post.createdAt),
-          commentsCount: post.commentsCount || 0,
           isSos: false,
         });
       }
     });
 
-    return list;
+    return list.slice(0, 8);
   }, [livePosts, activeSosAlerts, coordinates]);
 
   // ── Search results (debounced) ────────────────────────────────────────────
@@ -446,7 +446,6 @@ export default function HomeFeedScreen() {
     const term = debouncedSearchQuery.toLowerCase();
     const posts: any[] = [];
     const neighbors: any[] = [];
-    const biz: any[] = [];
 
     livePosts.forEach(p => {
       if (p.title?.toLowerCase().includes(term) || p.description?.toLowerCase().includes(term) || p.category?.toLowerCase().includes(term)) {
@@ -458,19 +457,13 @@ export default function HomeFeedScreen() {
         neighbors.push({ ...u, id: u.uid || String(Math.random()), searchType: 'user' });
       }
     });
-    nearbyBusinesses.forEach(b => {
-      if (b.businessName?.toLowerCase().includes(term) || b.description?.toLowerCase().includes(term) || b.category?.toLowerCase().includes(term)) {
-        biz.push({ ...b, id: b.id || String(Math.random()), searchType: 'business' });
-      }
-    });
 
     // Build flat list with section headers
     const flat: any[] = [];
     if (posts.length > 0) { flat.push({ _header: 'Community Posts' }); flat.push(...posts); }
     if (neighbors.length > 0) { flat.push({ _header: 'Neighbors' }); flat.push(...neighbors); }
-    if (biz.length > 0) { flat.push({ _header: 'Local Businesses' }); flat.push(...biz); }
     return flat;
-  }, [debouncedSearchQuery, livePosts, localNeighbors, nearbyBusinesses]);
+  }, [debouncedSearchQuery, livePosts, localNeighbors]);
 
   const rawResultCount = useMemo(() => {
     if (!debouncedSearchQuery.trim()) return 0;
@@ -583,7 +576,7 @@ export default function HomeFeedScreen() {
           ListHeaderComponent={
             <View style={{ paddingBottom: 16 }}>
 
-              {/* ── PRIMARY ACTION HUB (AIRBNB CATEGORIES STYLE) ── */}
+              {/* ── PRIMARY ACTION HUB (AIRBNB 3D ICONS) ── */}
               <View style={s.actionHub}>
                 <Text style={s.sectionTitle}>How can we help?</Text>
                 
@@ -591,48 +584,50 @@ export default function HomeFeedScreen() {
                   {/* SOS */}
                   <TouchableOpacity
                     style={s.actionItem}
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
                     onPress={() => router.push("/sos")}
                   >
-                    <View style={[s.actionIconCircle, { backgroundColor: Colors.primaryLight, borderColor: '#FF385C' }]}>
-                      <Text style={s.actionEmoji}>🚨</Text>
-                    </View>
+                    <FloatingIcon source={require('@/assets/icons3d/sos.png')} delay={50} style={s.actionIcon3d} />
                     <Text style={s.actionLabel}>SOS</Text>
                   </TouchableOpacity>
 
                   {/* Need Help */}
                   <TouchableOpacity
                     style={s.actionItem}
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
                     onPress={() => router.push("/post/create?type=help")}
                   >
-                    <View style={s.actionIconCircle}>
-                      <Text style={s.actionEmoji}>🤝</Text>
-                    </View>
+                    <FloatingIcon source={require('@/assets/icons3d/need_help.png')} delay={100} style={s.actionIcon3d} />
                     <Text style={s.actionLabel} numberOfLines={1}>Need Help</Text>
                   </TouchableOpacity>
 
                   {/* Offer Help */}
                   <TouchableOpacity
                     style={s.actionItem}
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
                     onPress={() => router.push("/post/create?type=offer")}
                   >
-                    <View style={s.actionIconCircle}>
-                      <Text style={s.actionEmoji}>💚</Text>
-                    </View>
+                    <FloatingIcon source={require('@/assets/icons3d/offer_help.png')} delay={150} style={s.actionIcon3d} />
                     <Text style={s.actionLabel} numberOfLines={1}>Offer Help</Text>
+                  </TouchableOpacity>
+
+                  {/* Recommendation */}
+                  <TouchableOpacity
+                    style={s.actionItem}
+                    activeOpacity={0.7}
+                    onPress={() => router.push("/post/create?type=recommend")}
+                  >
+                    <FloatingIcon source={require('@/assets/icons3d/recommend.png')} delay={200} style={s.actionIcon3d} />
+                    <Text style={s.actionLabel} numberOfLines={1}>Recommend</Text>
                   </TouchableOpacity>
 
                   {/* Lost & Found */}
                   <TouchableOpacity
                     style={s.actionItem}
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
                     onPress={() => router.push("/post/create?type=lost")}
                   >
-                    <View style={s.actionIconCircle}>
-                      <Text style={s.actionEmoji}>📦</Text>
-                    </View>
+                    <FloatingIcon source={require('@/assets/icons3d/lost_found.png')} delay={250} style={s.actionIcon3d} />
                     <Text style={s.actionLabel} numberOfLines={1}>Lost & Found</Text>
                   </TouchableOpacity>
                 </View>
@@ -642,7 +637,7 @@ export default function HomeFeedScreen() {
               {liveActivities.length > 0 && (
                 <View style={s.liveSection}>
                   <View style={s.liveHeader}>
-                    <Text style={s.sectionTitle}>Live Activity</Text>
+                    <Text style={s.sectionTitle}>Recent Alerts & Needs</Text>
                     <View style={s.liveBadge}>
                       <View style={s.liveDot} />
                       <Text style={s.liveBadgeText}>Active now</Text>
@@ -757,13 +752,13 @@ export default function HomeFeedScreen() {
               {/* ── FEED HEADER & FILTERS ── */}
               <Animated.View entering={FadeIn.delay(100)} style={s.feedHeader}>
                 <View style={s.feedHeaderTop}>
-                  <Text style={s.feedSectionTitle}>Community Feed</Text>
+                  <Text style={s.feedSectionTitle}>Local Requests & Notices</Text>
                   <TouchableOpacity
                     style={s.postBtn}
                     activeOpacity={0.8}
                     onPress={() => {
                       if (!go("Post")) return;
-                      setSheetVisible(true);
+                      router.push('/post/create');
                     }}
                   >
                     <Ionicons name="add" size={14} color={T.card} style={{ marginRight: 2 }} />
@@ -776,32 +771,22 @@ export default function HomeFeedScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={s.chipsRow}
                 >
-                  {(
-                    ["all", "emergency", "help", "lost_found", "recommendations", "services"] as const
-                  ).map((cat) => (
+                  {([
+                    { id: "all", label: "All" },
+                    { id: "emergency", label: "🚨 Emergency" },
+                    { id: "need_help", label: "🤝 Need Help" },
+                    { id: "offer_help", label: "💚 Offer Help" },
+                    { id: "recommendations", label: "⭐ Recommend" },
+                    { id: "lost_found", label: "🔍 Lost & Found" },
+                  ] as const).map((cat) => (
                     <TouchableOpacity
-                      key={cat}
-                      style={[s.chip, selectedCategory === cat && s.chipActive]}
-                      onPress={() => setSelectedCategory(cat)}
+                      key={cat.id}
+                      style={[s.chip, selectedCategory === cat.id && s.chipActive]}
+                      onPress={() => setSelectedCategory(cat.id as any)}
                       activeOpacity={0.8}
                     >
-                      <Text
-                        style={[
-                          s.chipText,
-                          selectedCategory === cat && s.chipTextActive,
-                        ]}
-                      >
-                        {cat === "all"
-                          ? "All"
-                          : cat === "emergency"
-                            ? "🚨 Emergency"
-                            : cat === "help"
-                              ? "🤝 Help"
-                              : cat === "lost_found"
-                                ? "🔍 Lost"
-                                : cat === "recommendations"
-                                  ? "⭐ Recommendations"
-                                  : "🛠️ Services"}
+                      <Text style={[s.chipText, selectedCategory === cat.id && s.chipTextActive]}>
+                        {cat.label}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -870,9 +855,6 @@ export default function HomeFeedScreen() {
                   post.isSos
                     ? router.push(`/sos/${(post as any).originalId}` as any)
                     : router.push(`/post/${post.id}` as any)
-                }
-                onLikePress={() =>
-                  !post.isSos && handleLike(post as FirestorePost)
                 }
                 onCommentPress={() =>
                   post.isSos
@@ -1390,18 +1372,15 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  actionIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.card,
+  actionIconWrap: {
+    width: 56,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
-  actionEmoji: {
-    fontSize: 22,
+  actionIcon3d: {
+    width: 48,
+    height: 48,
   },
   actionLabel: {
     fontSize: 11,

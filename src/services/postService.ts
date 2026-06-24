@@ -46,9 +46,8 @@ export interface Post {
   city?: string;
   country?: string;
   createdAt?: any;
-  likesCount: number;
   commentsCount: number;
-  likedBy?: string[];
+
   responderIds?: string[];
   responderDetails?: Record<
     string,
@@ -89,7 +88,6 @@ export class PostService {
       Post,
       | "id"
       | "createdAt"
-      | "likesCount"
       | "commentsCount"
       | "distanceKm"
       | "distanceLabel"
@@ -109,9 +107,7 @@ export class PostService {
         ...postData,
         title: sanitizeText(postData.title, 200),
         description: sanitizeText(postData.description, 5000),
-        likesCount: 0,
         commentsCount: 0,
-        likedBy: [],
         createdAt: serverTimestamp(),
       });
 
@@ -444,67 +440,6 @@ export class PostService {
     }
   }
 
-  static async toggleLike(postId: string, userId: string): Promise<boolean> {
-    try {
-      const docRef = doc(db, "posts", postId);
-      const docSnap = await getDoc(docRef);
-
-      if (!docSnap.exists()) throw new Error("Post not found");
-
-      const data = docSnap.data();
-      const likedBy = data.likedBy || [];
-      const hasLiked = likedBy.includes(userId);
-
-      if (hasLiked) {
-        await updateDoc(docRef, {
-          likedBy: arrayRemove(userId),
-          likesCount: increment(-1),
-        });
-        return false;
-      } else {
-        await updateDoc(docRef, {
-          likedBy: arrayUnion(userId),
-          likesCount: increment(1),
-        });
-
-        // ─── NEW: Send like notification ──────────────────────────────────
-        // Don't notify if the user likes their own post
-        if (data.userId && data.userId !== userId) {
-          try {
-            // Get liker's profile for notification
-            const likerProfile = await UserService.getUser(userId);
-            const likerName = likerProfile?.name || "A Neighbor";
-
-            // Send notification to post author
-            await NotificationService.sendInAppNotification(
-              data.userId, // Post author
-              `❤️ ${likerName} liked your post`,
-              data.title ? data.title.substring(0, 80) : "Your post",
-              "like_notification",
-              {
-                postId,
-                senderId: userId,
-                senderName: likerName,
-                category: data.category,
-              },
-            );
-          } catch (notifError) {
-            // Log but don't fail - notification is non-critical
-            console.warn(
-              "[PostService] Like notification failed (non-critical):",
-              notifError,
-            );
-          }
-        }
-        // ─── END: Like notification ───────────────────────────────────────
-
-        return true;
-      }
-    } catch (error) {
-      console.error("Error toggling like:", error);
-      throw error;
-    }
-  }
 
   /**
    * Respond to an SOS post. Adds the responder to a `responders` array
@@ -583,10 +518,11 @@ export class PostService {
     userId: string,
     callback: (posts: Post[]) => void,
   ): () => void {
+    // Removed orderBy("createdAt", "desc") to prevent composite index FAILED_PRECONDITION errors
+    // sorting is now handled efficiently on the client.
     const q = query(
       collection(db, "posts"),
-      where("userId", "==", userId),
-      orderBy("createdAt", "desc"),
+      where("userId", "==", userId)
     );
 
     return onSnapshot(
@@ -595,6 +531,14 @@ export class PostService {
         const posts = snapshot.docs.map(
           (d: any) => ({ id: d.id, ...d.data() }) as Post,
         );
+        
+        // Sort locally
+        posts.sort((a, b) => {
+          const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : Date.now());
+          const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : Date.now());
+          return tB - tA;
+        });
+
         callback(posts);
       },
       (error: any) => {

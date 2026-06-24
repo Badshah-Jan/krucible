@@ -124,42 +124,28 @@ export default function BusinessesScreen() {
 }
 
 const MemoizedBusinessItem = React.memo(({ item, index, onCall, onWeb, onPress }: any) => {
-  const isPremium = item.isPremium;
-  
   return (
     <Animated.View entering={FadeInDown.duration(400).delay(index * 100).springify()}>
       <TouchableOpacity 
-        style={isPremium ? null : styles.card} 
+        style={styles.card} 
         onPress={onPress}
         activeOpacity={0.8}
       >
-        {isPremium ? (
-          <LinearGradient colors={["#FFFBEB", "#FEF3C7"]} style={styles.premiumCard} start={{x:0, y:0}} end={{x:1, y:1}}>
-            <CardContent item={item} isPremium={true} onCall={onCall} onWeb={onWeb} />
-          </LinearGradient>
-        ) : (
-          <CardContent item={item} isPremium={false} onCall={onCall} onWeb={onWeb} />
-        )}
+        <CardContent item={item} onCall={onCall} onWeb={onWeb} />
       </TouchableOpacity>
     </Animated.View>
   );
-}, (prev, next) => prev.item.id === next.item.id && prev.item.isPremium === next.item.isPremium && prev.item.businessName === next.item.businessName);
+}, (prev, next) => prev.item.id === next.item.id && prev.item.businessName === next.item.businessName);
 
-const CardContent = React.memo(({ item, isPremium, onCall, onWeb }: { item: BusinessProfile; isPremium: boolean; onCall: any; onWeb: any }) => {
+const CardContent = React.memo(({ item, onCall, onWeb }: { item: BusinessProfile; onCall: any; onWeb: any }) => {
   return (
     <View style={styles.cardContent}>
       <View style={styles.cardHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>{item.businessName}</Text>
-          <Text style={[styles.category, isPremium && { color: "#D97706" }]} numberOfLines={1}>{item.category}</Text>
+          <Text style={styles.category} numberOfLines={1}>{item.category}</Text>
         </View>
         <View style={styles.badges}>
-          {isPremium && (
-            <View style={[styles.badge, { backgroundColor: '#FDE68A', borderColor: '#FCD34D', borderWidth: 1 }]}>
-              <Ionicons name="star" size={10} color="#D97706" style={{ marginRight: 2 }} />
-              <Text style={[styles.badgeText, { color: '#B45309' }]}>PREMIUM</Text>
-            </View>
-          )}
           {item.isVerified && (
             <View style={[styles.badge, { backgroundColor: '#D1FAE5', borderColor: '#A7F3D0', borderWidth: 1 }]}>
               <Ionicons name="checkmark-circle" size={10} color="#059669" style={{ marginRight: 2 }} />
@@ -174,27 +160,27 @@ const CardContent = React.memo(({ item, isPremium, onCall, onWeb }: { item: Busi
         <Text style={styles.address} numberOfLines={1}>{item.address}</Text>
       </View>
       
-      <Text style={[styles.description, isPremium && { color: "#78350F" }]} numberOfLines={2}>{item.description}</Text>
+      <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
 
       {/* Inline Actions */}
       <View style={styles.actionRow}>
         {item.phone ? (
           <TouchableOpacity 
-            style={[styles.actionBtn, isPremium && { backgroundColor: "#FEF3C7", borderColor: "#FDE68A" }]} 
+            style={styles.actionBtn} 
             onPress={() => onCall(item.phone, item.id)}
           >
-            <Ionicons name="call" size={14} color={isPremium ? "#D97706" : "#EF4444"} style={{ marginRight: 6 }} />
-            <Text style={[styles.actionBtnText, isPremium && { color: "#D97706" }]}>Call</Text>
+            <Ionicons name="call" size={14} color="#EF4444" style={{ marginRight: 6 }} />
+            <Text style={styles.actionBtnText}>Call</Text>
           </TouchableOpacity>
         ) : null}
         
         {item.website ? (
           <TouchableOpacity 
-            style={[styles.actionBtn, isPremium && { backgroundColor: "#FEF3C7", borderColor: "#FDE68A" }]} 
+            style={styles.actionBtn} 
             onPress={() => onWeb(item.website, item.id)}
           >
-            <Ionicons name="globe" size={14} color={isPremium ? "#D97706" : "#EF4444"} style={{ marginRight: 6 }} />
-            <Text style={[styles.actionBtnText, isPremium && { color: "#D97706" }]}>Website</Text>
+            <Ionicons name="globe" size={14} color="#EF4444" style={{ marginRight: 6 }} />
+            <Text style={styles.actionBtnText}>Website</Text>
           </TouchableOpacity>
         ) : null}
       </View>
