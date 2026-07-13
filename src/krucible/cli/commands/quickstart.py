@@ -216,14 +216,42 @@ def quickstart_cmd() -> None:
                 pass
                 
         if found_key:
-            console.print(f"[green]Successfully detected payload field: '{found_key}'[/green]")
+            console.print(f"[green]Successfully detected input payload field: '{found_key}'[/green]")
             env_vars["KRUCIBLE_CUSTOM_PAYLOAD_KEY"] = found_key
             os.environ["KRUCIBLE_CUSTOM_PAYLOAD_KEY"] = found_key
+            
+            console.print("\nAuto-detecting API response structure...")
+            found_out_key = None
+            try:
+                data = resp.json()
+                common_out_keys = ["response", "answer", "output", "content", "text", "message"]
+                for out_key in common_out_keys:
+                    if out_key in data and isinstance(data[out_key], str):
+                        found_out_key = out_key
+                        break
+            except Exception:
+                pass
+                
+            if found_out_key:
+                console.print(f"[green]Successfully detected output field: '{found_out_key}'[/green]")
+                env_vars["KRUCIBLE_CUSTOM_OUTPUT_KEY"] = found_out_key
+                os.environ["KRUCIBLE_CUSTOM_OUTPUT_KEY"] = found_out_key
+            else:
+                console.print("[yellow]Auto-detection failed for output field.[/yellow]")
+                out_key = Prompt.ask("What is the JSON key containing the AI's response? (leave blank to use full body)", default="")
+                if out_key:
+                    env_vars["KRUCIBLE_CUSTOM_OUTPUT_KEY"] = out_key
+                    os.environ["KRUCIBLE_CUSTOM_OUTPUT_KEY"] = out_key
         else:
             console.print("[yellow]Auto-detection failed. Could not determine the JSON structure.[/yellow]")
             found_key = Prompt.ask("What is the JSON key your API expects for the user input?", default="message")
             env_vars["KRUCIBLE_CUSTOM_PAYLOAD_KEY"] = found_key
             os.environ["KRUCIBLE_CUSTOM_PAYLOAD_KEY"] = found_key
+            
+            out_key = Prompt.ask("What is the JSON key containing the AI's response? (leave blank to use full body)", default="")
+            if out_key:
+                env_vars["KRUCIBLE_CUSTOM_OUTPUT_KEY"] = out_key
+                os.environ["KRUCIBLE_CUSTOM_OUTPUT_KEY"] = out_key
 
     elif journey_choice == 3:
         adapter_name = "python"
