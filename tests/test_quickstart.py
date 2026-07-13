@@ -16,12 +16,18 @@ def test_wizard_cancellation(mock_int):
 @patch("krucible.cli.commands.quickstart.IntPrompt.ask")
 @patch("krucible.cli.commands.quickstart.Prompt.ask")
 @patch("krucible.cli.commands.quickstart.test_cmd")
-def test_wizard_openai_flow(mock_test, mock_prompt, mock_int):
+@patch("krucible.cli.commands.quickstart.requests.get")
+def test_wizard_openai_flow(mock_get, mock_test, mock_prompt, mock_int):
     mock_int.side_effect = [1, 1] # Journey 1, Provider 1
-    mock_prompt.side_effect = ["gpt-4o-mini", "sk-test-key"]
+    mock_prompt.return_value = "sk-test-key"
+    
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"data": [{"id": "gpt-4o-mini"}]}
+    mock_get.return_value = mock_resp
     
     with patch("krucible.cli.commands.quickstart._write_yml") as mock_write, patch("krucible.cli.commands.quickstart._write_sample_files"):
-        with patch("krucible.cli.commands.quickstart.Confirm.ask", return_value=True):
+        with patch("krucible.cli.commands.quickstart.Confirm.ask", side_effect=[True, True]): # Use default model, Save config
             try:
                 quickstart_cmd()
             except typer.Exit:
