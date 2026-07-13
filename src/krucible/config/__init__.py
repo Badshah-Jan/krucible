@@ -1,7 +1,13 @@
 """Configuration subpackage using Pydantic."""
-from .exceptions import ConfigError, ConfigNotFoundError, ConfigValidationError, UnsupportedVersionError
-from .models import KrucibleConfig, TargetConfig, RegressionConfig, ProjectConfig
+
+from .exceptions import (
+    ConfigError,
+    ConfigNotFoundError,
+    ConfigValidationError,
+    UnsupportedVersionError,
+)
 from .loader import ConfigLoader
+from .models import KrucibleConfig, ProjectConfig, RegressionConfig, TargetConfig
 
 __all__ = [
     "ConfigLoader",

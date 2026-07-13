@@ -1,8 +1,11 @@
 """Test the doctor command."""
+
 from typer.testing import CliRunner
+
 from krucible.cli.app import app
 
 runner = CliRunner()
+
 
 def test_doctor_command():
     """Ensure doctor command passes under normal test environments."""

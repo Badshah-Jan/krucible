@@ -1,4 +1,5 @@
 """Init command."""
+
 import os
 from pathlib import Path
 
@@ -6,7 +7,11 @@ import typer
 
 from krucible.cli.console import console
 from krucible.cli.exit_codes import ExitCode
-from krucible.core.project_init import ProjectInitializer, ProjectAlreadyInitializedError
+from krucible.core.project_init import (
+    ProjectAlreadyInitializedError,
+    ProjectInitializer,
+)
+
 
 def init_cmd() -> None:
     """Initialize a new Krucible project workspace."""
@@ -15,7 +20,9 @@ def init_cmd() -> None:
 
     try:
         initializer.initialize()
-        console.print("[bold green]Successfully initialized Krucible project.[/bold green]")
+        console.print(
+            "[bold green]Successfully initialized Krucible project.[/bold green]"
+        )
         console.print(f"Created configuration at: [bold]{cwd / 'krucible.yml'}[/bold]")
         console.print(f"Created workspace at: [bold]{cwd / '.krucible'}[/bold]")
     except ProjectAlreadyInitializedError as e:

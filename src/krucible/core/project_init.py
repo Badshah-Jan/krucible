@@ -1,11 +1,15 @@
 """Project initialization service."""
+
 from pathlib import Path
 
 from krucible.core.constants import DEFAULT_CONFIG, DEFAULT_POLICY
 
+
 class ProjectAlreadyInitializedError(Exception):
     """Raised when the workspace already exists to prevent malicious overwrites."""
+
     pass
+
 
 class ProjectInitializer:
     """Securely handles the creation of the Krucible workspace."""
@@ -23,7 +27,9 @@ class ProjectInitializer:
             ProjectAlreadyInitializedError: If state already exists.
         """
         if self.config_file.exists() or self.krucible_dir.exists():
-            raise ProjectAlreadyInitializedError("Krucible is already initialized in this directory.")
+            raise ProjectAlreadyInitializedError(
+                "Krucible is already initialized in this directory."
+            )
 
         directories = [
             self.krucible_dir / "policies",
@@ -38,6 +44,6 @@ class ProjectInitializer:
             directory.mkdir(parents=True, exist_ok=True)
 
         self.config_file.write_text(DEFAULT_CONFIG, encoding="utf-8")
-        
+
         policy_file = self.krucible_dir / "policies" / "default.yml"
         policy_file.write_text(DEFAULT_POLICY, encoding="utf-8")
