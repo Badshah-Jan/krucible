@@ -23,6 +23,10 @@ from krucible.domain.models import Attack, Policy
 from krucible.domain.enums import RegressionStatus
 from krucible.loaders.attack_loader import AttackLoader
 from krucible.loaders.policy_loader import PolicyLoader
+from krucible.reports.engine import ReportEngine
+from krucible.reports.cli_reporter import CliReporter
+from krucible.reports.json_reporter import JsonReporter
+import time
 
 console = Console()
 
@@ -84,16 +88,22 @@ def test_cmd(
             console.print("\n[yellow]No valid policies discovered in .krucible/policies. Exiting.[/yellow]")
             raise typer.Exit(0)
         
-        
-        console.print(f"[bold]Attacks Executed:[/bold]\n{len(attacks)}\n")
-        console.print(f"[bold]Policies Evaluated:[/bold]\n{len(policies)}\n")
-        console.print("[bold]Results[/bold]\n")
+        # Set up Report Strategies
+        report_engine = ReportEngine()
+        report_engine.register_reporter("cli", CliReporter())
+        report_engine.register_reporter("json", JsonReporter())
+
+        start_time = time.time()
         
         # 4. Orchestrate Evaluation Pipeline
         evaluations = []
         for atk in attacks:
-            eval_res = orchestrator.evaluate_attack(atk, policies)
-            evaluations.append(eval_res)
+            try:
+                eval_res = orchestrator.evaluate_attack(atk, policies)
+                evaluations.append(eval_res)
+            except Exception as e:
+                console.print(f"[bold red]Error:[/bold red] Pipeline orchestration failed for attack '{atk.id}': {str(e)}")
+                raise typer.Exit(1)
             
         # 5. Detect Historical Regressions
         baseline_id = "default"
@@ -104,32 +114,25 @@ def test_cmd(
             reg_engine.save_baseline(baseline_id, evaluations)
             regressions = reg_engine.detect_regressions(baseline_id, evaluations)
             
-        # 6. Render the structured Rich UI output
-        passed = 0
-        failed = 0
-        regressed = 0
+        duration_ms = (time.time() - start_time) * 1000.0
         
-        reg_map = {r.attack_id: r for r in regressions}
+        # 6. Generate CI/CD Reports
+        summary = report_engine.build_summary(
+            evaluations=evaluations,
+            regressions=regressions,
+            target_adapter=config.target.adapter,
+            target_model=config.target.model,
+            duration_ms=duration_ms
+        )
         
-        for e in evaluations:
-            reg = reg_map.get(e.attack.id)
-            if reg and reg.status == RegressionStatus.REGRESSION_DETECTED:
-                console.print(f"[red]✗ {e.attack.name.ljust(25)} ........ REGRESSION[/red]")
-                regressed += 1
-                failed += 1
-            elif not e.passed:
-                console.print(f"[red]✗ {e.attack.name.ljust(25)} ........ FAIL[/red]")
-                failed += 1
-            else:
-                console.print(f"[green]✓ {e.attack.name.ljust(25)} ........ PASS[/green]")
-                passed += 1
-                
-        console.print(f"\n[bold]Summary[/bold]\n")
-        console.print(f"Passed: {passed}")
-        console.print(f"Failed: {failed}")
-        console.print(f"Regressions: {regressed}\n")
+        # Display to developer via Rich UI
+        report_engine.generate("cli", summary, console=console)
         
-        exit_code = 1 if failed > 0 else 0
+        # Dump to machine-readable artifact for GitHub Actions / CI
+        json_content = report_engine.generate("json", summary)
+        report_engine.save_to_file(json_content, Path(".krucible/reports/latest.json"))
+        
+        exit_code = 1 if summary.failed > 0 or summary.regressions > 0 else 0
         console.print(f"Exit Code: {exit_code}")
         raise typer.Exit(exit_code)
         
