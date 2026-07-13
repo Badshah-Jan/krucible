@@ -58,20 +58,18 @@ def quickstart_cmd() -> None:
     """Interactive onboarding wizard."""
     console.print(Panel("Welcome to Krucible\nAI Security Regression Testing\nLet's set up your first project.", title="Quickstart", style="bold blue"))
     
-    console.print("\nWhich AI Provider would you like to use?")
-    console.print("1. Ollama (Recommended - Local)")
-    console.print("2. OpenRouter")
-    console.print("3. OpenAI")
-    console.print("4. Gemini")
-    console.print("5. Custom REST API")
-    console.print("6. Cancel")
+    console.print("\nWhat are we testing today?")
+    console.print("1. A Raw AI Model (OpenAI, Anthropic, Gemini, Groq...)")
+    console.print("2. A Custom API Endpoint (FastAPI, Express...)")
+    console.print("3. A Native Python App (LangChain, CrewAI...)")
+    console.print("4. Cancel")
     
     try:
-        choice = IntPrompt.ask("Select an option", choices=["1", "2", "3", "4", "5", "6"], show_choices=False)
+        journey_choice = IntPrompt.ask("Select an option", choices=["1", "2", "3", "4"], show_choices=False)
     except Exception:
         raise typer.Exit(1)
         
-    if choice == 6:
+    if journey_choice == 4:
         console.print("[yellow]Wizard cancelled.[/yellow]")
         raise typer.Exit(0)
         
@@ -79,73 +77,56 @@ def quickstart_cmd() -> None:
     model_name = ""
     env_vars = {}
 
-    if choice == 1:
-        adapter_name = "ollama"
-        console.print("\nChecking for Ollama...")
-        try:
-            resp = requests.get("http://localhost:11434/api/tags", timeout=3)
-            if resp.status_code == 200:
-                tags = resp.json().get("models", [])
-                if not tags:
-                    console.print("[yellow]Ollama is running, but no models are installed.[/yellow]")
-                    console.print("Please open a new terminal and run: [bold]ollama pull llama3[/bold]")
+    if journey_choice == 1:
+        console.print("\nSelect your provider:")
+        console.print("1. OpenAI")
+        console.print("2. Anthropic")
+        console.print("3. Gemini")
+        console.print("4. Groq")
+        console.print("5. OpenRouter")
+        console.print("6. Ollama (Local)")
+        
+        provider_choice = IntPrompt.ask("Select an option", choices=[str(i) for i in range(1, 7)], show_choices=False)
+        
+        if provider_choice == 6:
+            adapter_name = "ollama"
+            console.print("\nChecking for Ollama...")
+            try:
+                resp = requests.get("http://localhost:11434/api/tags", timeout=3)
+                if resp.status_code == 200:
+                    tags = resp.json().get("models", [])
+                    if not tags:
+                        console.print("[yellow]Ollama is running, but no models are installed.[/yellow]")
+                        console.print("Please open a new terminal and run: [bold]ollama pull llama3[/bold]")
+                        raise typer.Exit(1)
+                    
+                    model_options = [m["name"] for m in tags]
+                    console.print("\nAvailable Local Models:")
+                    for i, m in enumerate(model_options, 1):
+                        console.print(f"{i}. {m}")
+                    
+                    m_choice = IntPrompt.ask("Select a model", choices=[str(i) for i in range(1, len(model_options)+1)], show_choices=False)
+                    model_name = model_options[m_choice - 1]
+                    console.print(f"\n[green]Selected Ollama model: {model_name}[/green]")
+                else:
                     raise typer.Exit(1)
-                
-                model_options = [m["name"] for m in tags]
-                console.print("\nAvailable Local Models:")
-                for i, m in enumerate(model_options, 1):
-                    console.print(f"{i}. {m}")
-                
-                m_choice = IntPrompt.ask("Select a model", choices=[str(i) for i in range(1, len(model_options)+1)])
-                model_name = model_options[m_choice - 1]
-                
-                console.print(f"\n[green]Selected Ollama model: {model_name}[/green]")
-                
-                # Test connection directly
-                try:
-                    adapter = OllamaAdapter(model=model_name)
-                    adapter.execute("Hello")
-                except Exception as e:
-                    console.print(f"[red]Ollama validation failed: {str(e)}[/red]")
-                    raise typer.Exit(1)
-            else:
-                console.print("[red]Ollama returned an unexpected response.[/red]")
+            except Exception:
+                console.print("[red]Ollama server is not running or unreachable.[/red]")
                 raise typer.Exit(1)
-        except requests.exceptions.RequestException:
-            console.print("[red]Ollama server is not running on http://localhost:11434.[/red]")
-            console.print("Please install Ollama from https://ollama.com and ensure the server is running.")
-            raise typer.Exit(1)
+        else:
+            providers = {1: "openai", 2: "anthropic", 3: "gemini", 4: "groq", 5: "openrouter"}
+            keys = {1: "OPENAI_API_KEY", 2: "ANTHROPIC_API_KEY", 3: "Gemini_API_KEY", 4: "GROQ_API_KEY", 5: "OPENROUTER_API_KEY"}
+            default_models = {1: "gpt-4o-mini", 2: "claude-3-haiku-20240307", 3: "gemini-2.0-flash", 4: "llama3-8b-8192", 5: "meta-llama/llama-3.1-8b-instruct"}
+            
+            adapter_name = providers[provider_choice]
+            model_name = default_models[provider_choice]
+            
+            console.print(f"\n[dim]Using default model: {model_name}[/dim]")
+            api_key = Prompt.ask(f"Enter your {adapter_name.title()} API Key")
+            env_vars[keys[provider_choice]] = api_key
+            os.environ[keys[provider_choice]] = api_key
 
-    elif choice in [2, 3, 4]:
-        providers = {2: "openrouter", 3: "openai", 4: "gemini"}
-        keys = {2: "OPENROUTER_API_KEY", 3: "OPENAI_API_KEY", 4: "Gemini_API_KEY"}
-        default_models = {2: "meta-llama/llama-3.1-8b-instruct", 3: "gpt-4o-mini", 4: "gemini-2.0-flash"}
-        
-        adapter_name = providers[choice]
-        model_name = default_models[choice]
-        
-        console.print(f"\n[dim]Using default model: {model_name}[/dim]")
-        api_key = Prompt.ask(f"Enter your {adapter_name.title()} API Key")
-        env_vars[keys[choice]] = api_key
-        
-        console.print(f"\nValidating {adapter_name.title()} connection...")
-        os.environ[keys[choice]] = api_key
-        try:
-            if choice == 2:
-                adapter = OpenRouterAdapter(model=model_name)
-            elif choice == 3:
-                adapter = OpenAIAdapter(model=model_name)
-            elif choice == 4:
-                adapter = GeminiAdapter(model=model_name)
-                
-            adapter.execute("Hello", context={"temperature": 0.0})
-            console.print("[green]Connection successful![/green]")
-        except Exception as e:
-            console.print(f"[red]Connection failed: {str(e)}[/red]")
-            console.print("Please check your API key and restart.")
-            raise typer.Exit(1)
-
-    elif choice == 5:
+    elif journey_choice == 2:
         adapter_name = "custom"
         base_url = Prompt.ask("\nEnter the Base URL (e.g. https://api.mycorp.com/v1/generate)")
         auth_header = Prompt.ask("Optional Authorization Header (leave blank if none)", default="")
@@ -153,17 +134,11 @@ def quickstart_cmd() -> None:
         if auth_header:
             env_vars["KRUCIBLE_CUSTOM_AUTH"] = auth_header
         model_name = "custom"
-        
-        console.print("\nValidating Custom REST API connection...")
-        os.environ["KRUCIBLE_CUSTOM_URL"] = base_url
-        if auth_header:
-            os.environ["KRUCIBLE_CUSTOM_AUTH"] = auth_header
-        try:
-            adapter = CustomRestAdapter(model=model_name)
-            adapter.execute("Hello")
-            console.print("[green]Connection successful![/green]")
-        except Exception as e:
-            console.print(f"[yellow]Validation warning (might be expected for custom APIs): {str(e)}[/yellow]")
+
+    elif journey_choice == 3:
+        adapter_name = "python"
+        console.print("\n[dim]Example: If your Langchain agent is in 'app.py' as 'run_agent(prompt)'[/dim]")
+        model_name = Prompt.ask("Enter target", default="app.py:run_agent")
 
     # Setup Project
     console.print("\n[bold]Creating project structure...[/bold]")
