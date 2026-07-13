@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-krucible = "krucible.cli.main:app"
+krucible = "krucible.cli.app:app"
 
 [build-system]
 requires = ["hatchling"]
