@@ -265,13 +265,16 @@ def quickstart_cmd() -> None:
     if Confirm.ask("\nDo you want to save this configuration as your default krucible.yml?"):
         _write_yml(Path("krucible.yml"), adapter_name, model_name)
         console.print("[green]Configuration saved![/green]")
+        saved = True
+    else:
+        saved = False
         
     console.print("\n[bold]Running your first Security Scan...[/bold]\n")
     try:
         # Zero-state execution override if config wasn't saved!
-        if Path("krucible.yml").exists():
-            test_cmd(config_path=Path("krucible.yml"), target=None)
+        if saved:
+            test_cmd(config_path=Path("krucible.yml"), target=None, verbose=True)
         else:
-            test_cmd(config_path=Path("krucible.yml"), target=f"{adapter_name}:{model_name}")
+            test_cmd(config_path=Path("krucible.yml"), target=f"{adapter_name}:{model_name}", verbose=True)
     except typer.Exit as e:
         raise typer.Exit(e.exit_code)

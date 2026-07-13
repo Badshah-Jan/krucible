@@ -33,7 +33,7 @@ def test_wizard_openai_flow(mock_get, mock_test, mock_prompt, mock_int):
             except typer.Exit:
                 pass
             
-            mock_test.assert_called_once_with(config_path=Path("krucible.yml"), target=None)
+            mock_test.assert_called_once_with(config_path=Path("krucible.yml"), target=None, verbose=True)
 
 @patch("krucible.cli.commands.quickstart.IntPrompt.ask")
 @patch("krucible.cli.commands.quickstart.requests.get")

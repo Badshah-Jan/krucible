@@ -52,16 +52,18 @@ def test_cmd(
     target: str = typer.Option(
         None, "--target", "-t", help="Zero-configuration target override (e.g. openai:gpt-4o, python:app.py:agent)"
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Print verbose execution flow"
+    ),
 ):
     """Executes the AI Security Regression Testing pipeline."""
     try:
         console.print(
             "[bold blue]Running AI Security Regression Tests...[/bold blue]\n"
         )
-
+        
         # 1. Load Configuration
         if target:
-            # Zero-Configuration CLI Override
             adapter_id, model_id = target.split(":", 1)
             class TargetConfig:
                 adapter = adapter_id
@@ -72,17 +74,19 @@ def test_cmd(
                 target = TargetConfig()
                 regression = RegressionConfig()
             config = MockConfig()
-            console.print(f"[bold]Target (CLI Override):[/bold]\n{adapter_id.title()} {model_id}\n")
+            if verbose:
+                console.print(f"[bold]Target (CLI Override):[/bold]\n{adapter_id.title()} {model_id}\n")
         else:
             config = ConfigLoader.load(config_path)
-            console.print(
-                f"[bold]Target:[/bold]\n{config.target.adapter.title()} {config.target.model}\n"
-            )
+            if verbose:
+                console.print(
+                    f"[bold]Target:[/bold]\n{config.target.adapter.title()} {config.target.model}\n"
+                )
 
         # 2. Wire up Dependency Registries
         adapter_reg = AdapterRegistry()
         adapter_reg.register("openai", OpenAIAdapter)
-        adapter_reg.register("mock", MockAdapter)  # Enabled strictly for CI/CD unit testing
+        adapter_reg.register("mock", MockAdapter)
         adapter_reg.register("gemini", GeminiAdapter)
         adapter_reg.register("openrouter", OpenRouterAdapter)
         adapter_reg.register("ollama", OllamaAdapter)
@@ -129,8 +133,7 @@ def test_cmd(
         policies = policy_loader.load_all(console=console)
 
         if not attacks:
-            # Zero-Configuration: Auto-generate default attack in memory
-            console.print("[dim]No local attacks found. Generating default OWASP Prompt Injection in memory...[/dim]")
+            if verbose: console.print("[dim]No local attacks found. Generating default OWASP Prompt Injection in memory...[/dim]")
             from krucible.domain.models import Attack
             default_attack = Attack(
                 id="atk-zero-config-injection",
@@ -143,7 +146,7 @@ def test_cmd(
             attacks = [default_attack]
 
         if not policies:
-            console.print("[dim]No local policies found. Generating default Safety Policy in memory...[/dim]")
+            if verbose: console.print("[dim]No local policies found. Generating default Safety Policy in memory...[/dim]")
             from krucible.domain.models import Policy
             default_policy = Policy(
                 id="pol-zero-config-safety",
@@ -164,8 +167,25 @@ def test_cmd(
         evaluations = []
         for atk in attacks:
             try:
+                if verbose:
+                    console.print(f"\n[bold magenta]=== Executing Attack: {atk.name} ===[/bold magenta]")
+                    console.print(f"[cyan]Attack Payload[/cyan] ↓\n{atk.payload}\n")
+                    
                 eval_res = orchestrator.evaluate_attack(atk, policies)
                 evaluations.append(eval_res)
+                
+                if verbose:
+                    trace = eval_res.result.adapter_trace
+                    if "http_request" in trace:
+                        console.print(f"[cyan]HTTP Request[/cyan] ↓\n{trace['http_request']}\n")
+                    if "http_response" in trace:
+                        console.print(f"[cyan]HTTP Response[/cyan] ↓\n{trace['http_response']}\n")
+                        
+                    console.print(f"[cyan]Raw AI Response[/cyan] ↓\n{eval_res.result.raw_response}\n")
+                    console.print(f"[cyan]Policy Evaluation[/cyan] ↓")
+                    for pr in eval_res.policy_results:
+                        console.print(f"  - {pr.policy_id}: {pr.status.value} ({pr.reason})")
+                    console.print("")
             except Exception as e:
                 console.print(
                     f"[bold red]Error:[/bold red] Pipeline orchestration failed for attack '{atk.id}': {str(e)}"

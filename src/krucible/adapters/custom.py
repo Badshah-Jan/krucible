@@ -30,7 +30,11 @@ class CustomRestAdapter(BaseAdapter):
             
             latency_ms = (time.time() - start_time) * 1000.0
             raw_content = resp.text
-            trace = {"model_used": self.model}
+            trace = {
+                "model_used": self.model,
+                "http_request": {"url": self.url, "method": "POST", "body": {self.payload_key: payload}},
+                "http_response": {"status_code": resp.status_code, "body": raw_content[:500]}
+            }
             
             return raw_content, latency_ms, trace
         except Exception as e:
