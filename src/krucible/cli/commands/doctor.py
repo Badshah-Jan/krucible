@@ -16,7 +16,7 @@ def doctor_cmd() -> None:
     py_version = sys.version_info
     if py_version.major == 3 and py_version.minor >= 10:
         console.print(
-            f"[green]✓[/green] Python {py_version.major}.{py_version.minor}.{py_version.micro} is supported."
+            f"[green][PASS][/green] Python {py_version.major}.{py_version.minor}.{py_version.micro} is supported."
         )
     else:
         console.print(

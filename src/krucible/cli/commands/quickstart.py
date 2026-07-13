@@ -199,6 +199,6 @@ def quickstart_cmd() -> None:
         
     console.print("\n[bold green]Setup Complete![/bold green] Running your first Security Scan...\n")
     try:
-        test_cmd()
+        test_cmd(config_path=Path("krucible.yml"))
     except typer.Exit as e:
         raise typer.Exit(e.exit_code)
