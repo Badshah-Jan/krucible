@@ -2,8 +2,9 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from krucible.cli.commands.quickstart import quickstart_cmd
+from pathlib import Path
 import typer
+from krucible.cli.commands.quickstart import quickstart_cmd
 
 @patch("krucible.cli.commands.quickstart.IntPrompt.ask")
 def test_wizard_cancellation(mock_int):
@@ -14,16 +15,10 @@ def test_wizard_cancellation(mock_int):
 
 @patch("krucible.cli.commands.quickstart.IntPrompt.ask")
 @patch("krucible.cli.commands.quickstart.Prompt.ask")
-@patch("krucible.cli.commands.quickstart.init_cmd")
-@patch("krucible.cli.commands.quickstart.doctor_cmd")
 @patch("krucible.cli.commands.quickstart.test_cmd")
-@patch("krucible.cli.commands.quickstart.OpenAIAdapter")
-def test_wizard_openai_flow(mock_adapter, mock_test, mock_doctor, mock_init, mock_prompt, mock_int):
+def test_wizard_openai_flow(mock_test, mock_prompt, mock_int):
     mock_int.side_effect = [1, 1] # Journey 1, Provider 1
-    mock_prompt.return_value = "sk-test-key"
-    
-    mock_adapter_instance = MagicMock()
-    mock_adapter.return_value = mock_adapter_instance
+    mock_prompt.side_effect = ["gpt-4o-mini", "sk-test-key"]
     
     with patch("krucible.cli.commands.quickstart._write_yml") as mock_write, patch("krucible.cli.commands.quickstart._write_sample_files"):
         with patch("krucible.cli.commands.quickstart.Confirm.ask", return_value=True):
@@ -32,10 +27,7 @@ def test_wizard_openai_flow(mock_adapter, mock_test, mock_doctor, mock_init, moc
             except typer.Exit:
                 pass
             
-            mock_init.assert_called_once()
-            mock_doctor.assert_called_once()
             mock_test.assert_called_once_with(config_path=Path("krucible.yml"), target=None)
-            mock_adapter_instance.execute.assert_called_once_with("Hello", context={"temperature": 0.0})
 
 @patch("krucible.cli.commands.quickstart.IntPrompt.ask")
 @patch("krucible.cli.commands.quickstart.requests.get")

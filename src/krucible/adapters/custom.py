@@ -14,6 +14,7 @@ class CustomRestAdapter(BaseAdapter):
         self.model = model or "custom"
         self.url = os.environ.get("KRUCIBLE_CUSTOM_URL")
         self.auth = os.environ.get("KRUCIBLE_CUSTOM_AUTH")
+        self.payload_key = os.environ.get("KRUCIBLE_CUSTOM_PAYLOAD_KEY", "prompt")
         if not self.url:
             raise ValueError("KRUCIBLE_CUSTOM_URL environment variable must be set.")
 
@@ -24,7 +25,7 @@ class CustomRestAdapter(BaseAdapter):
             if self.auth:
                 headers["Authorization"] = self.auth
                 
-            resp = requests.post(self.url, json={"prompt": payload}, headers=headers, timeout=60)
+            resp = requests.post(self.url, json={self.payload_key: payload}, headers=headers, timeout=60)
             resp.raise_for_status()
             
             latency_ms = (time.time() - start_time) * 1000.0
