@@ -1,5 +1,9 @@
 """Root Typer application for Krucible."""
 import typer
+from dotenv import load_dotenv
+
+# Automatically inject variables from .env into the environment
+load_dotenv()
 
 from krucible.cli.commands import doctor, init, version, test
 
