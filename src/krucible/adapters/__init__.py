@@ -1,1 +1,4 @@
-"""Adapters package mapping external AI frameworks to Krucible domains."""
+from .mock import MockAdapter
+from .openai import OpenAIAdapter
+
+__all__ = ["MockAdapter", "OpenAIAdapter"]

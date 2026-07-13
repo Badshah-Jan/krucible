@@ -23,7 +23,7 @@ def engine(registry):
 
 def test_engine_evaluates_regex_success(engine):
     """Ensure regex pattern matching accurately catches violations."""
-    policy = Policy(id="pol-1", name="No SSN", type="regex", rules={"deny": [r"\\b\\d{3}-\\d{2}-\\d{4}\\b"]})
+    policy = Policy(id="pol-1", name="No SSN", type="regex", rules={"deny": [r"\b\d{3}-\d{2}-\d{4}\b"]})
     result_fail = AttackResult(attack_id="att-1", raw_response="My SSN is 123-45-6789.", latency_ms=100)
     result_pass = AttackResult(attack_id="att-1", raw_response="I cannot share personal data.", latency_ms=100)
     
