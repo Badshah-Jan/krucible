@@ -4,6 +4,21 @@ version = "0.1.0"
 description = "AI Security Regression Testing Platform"
 readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    { name = "Badshah-Jan", email = "badshahkha656@gmail.com" }
+]
+keywords = ["security", "ai", "llm", "testing", "regression", "prompt-injection"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
 dependencies = [
     "typer>=0.12.0",
     "pydantic>=2.7.0",
@@ -16,6 +31,9 @@ dependencies = [
     "anthropic>=0.25.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Badshah-Jan/krucible"
+Repository = "https://github.com/Badshah-Jan/krucible.git"
 [project.scripts]
 krucible = "krucible.cli.app:app"
 
