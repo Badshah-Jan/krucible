@@ -20,7 +20,7 @@ def test_wizard_cancellation(mock_int):
 @patch("krucible.cli.commands.quickstart.OpenAIAdapter")
 def test_wizard_openai_flow(mock_adapter, mock_test, mock_doctor, mock_init, mock_prompt, mock_int):
     mock_int.return_value = 3 # OpenAI
-    mock_prompt.side_effect = ["gpt-4", "sk-test-key"]
+    mock_prompt.return_value = "sk-test-key"
     
     mock_adapter_instance = MagicMock()
     mock_adapter.return_value = mock_adapter_instance

@@ -119,10 +119,13 @@ def quickstart_cmd() -> None:
     elif choice in [2, 3, 4]:
         providers = {2: "openrouter", 3: "openai", 4: "gemini"}
         keys = {2: "OPENROUTER_API_KEY", 3: "OPENAI_API_KEY", 4: "Gemini_API_KEY"}
+        default_models = {2: "meta-llama/llama-3.1-8b-instruct", 3: "gpt-4o-mini", 4: "gemini-2.0-flash"}
         
         adapter_name = providers[choice]
-        model_name = Prompt.ask(f"\nEnter the {adapter_name.title()} model name (e.g. gpt-4o, gemini-2.0-flash)")
-        api_key = Prompt.ask(f"Enter your {adapter_name.title()} API Key", password=True)
+        model_name = default_models[choice]
+        
+        console.print(f"\n[dim]Using default model: {model_name}[/dim]")
+        api_key = Prompt.ask(f"Enter your {adapter_name.title()} API Key")
         env_vars[keys[choice]] = api_key
         
         console.print(f"\nValidating {adapter_name.title()} connection...")
