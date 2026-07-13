@@ -67,7 +67,7 @@ def quickstart_cmd() -> None:
     console.print("6. Cancel")
     
     try:
-        choice = IntPrompt.ask("Select an option", choices=["1", "2", "3", "4", "5", "6"])
+        choice = IntPrompt.ask("Select an option", choices=["1", "2", "3", "4", "5", "6"], show_choices=False)
     except Exception:
         raise typer.Exit(1)
         
