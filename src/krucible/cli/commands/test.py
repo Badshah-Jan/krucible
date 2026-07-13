@@ -7,6 +7,7 @@ from krucible.config.loader import ConfigLoader
 from krucible.adapters.registry import AdapterRegistry
 from krucible.adapters.openai import OpenAIAdapter
 from krucible.adapters.mock import MockAdapter
+from krucible.adapters.gemini import GeminiAdapter
 from krucible.policies.registry import EvaluatorRegistry
 from krucible.policies.evaluators.regex import RegexEvaluator
 from krucible.policies.evaluators.keyword import KeywordEvaluator
@@ -38,6 +39,7 @@ def test_cmd(
         adapter_reg = AdapterRegistry()
         adapter_reg.register("openai", OpenAIAdapter)
         adapter_reg.register("mock", MockAdapter)  # Enabled strictly for CI/CD unit testing
+        adapter_reg.register("gemini", GeminiAdapter)
         adapter = adapter_reg.get_adapter(config.target.adapter, model=config.target.model)
         
         attack_reg = AttackRegistry()
