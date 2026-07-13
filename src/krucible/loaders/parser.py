@@ -16,9 +16,7 @@ class YamlParser:
             with file_path.open("r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if not isinstance(data, dict):
-                raise FileParseError(
-                    f"File {file_path.name} must contain a YAML dictionary at the root."
-                )
+                raise FileParseError(f"File {file_path.name} must contain a YAML dictionary at the root.")
             return data
         except yaml.YAMLError as e:
             raise FileParseError(f"Invalid YAML syntax in {file_path.name}: {str(e)}")

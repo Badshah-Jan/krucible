@@ -25,9 +25,7 @@ class GeminiAdapter(BaseAdapter):
     def __init__(self, model: str = None):
         """Initialize the Gemini adapter with the modern genai SDK."""
         if genai is None:
-            raise ImportError(
-                "The 'google-genai' package is required. Run 'pip install google-genai'."
-            )
+            raise ImportError("The 'google-genai' package is required. Run 'pip install google-genai'.")
 
         if model is None:
             config_path = Path.cwd() / "krucible.yml"
@@ -39,19 +37,13 @@ class GeminiAdapter(BaseAdapter):
         else:
             self.model = model
 
-        self.api_key = os.environ.get("Gemini_API_KEY") or os.environ.get(
-            "GEMINI_API_KEY"
-        )
+        self.api_key = os.environ.get("Gemini_API_KEY") or os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
-            raise ValueError(
-                "The 'Gemini_API_KEY' environment variable must be set to use the GeminiAdapter."
-            )
+            raise ValueError("The 'Gemini_API_KEY' environment variable must be set to use the GeminiAdapter.")
 
         self.client = genai.Client(api_key=self.api_key)
 
-    def execute(
-        self, payload: str, context: Dict[str, Any] = None
-    ) -> Tuple[str, float, Dict[str, Any]]:
+    def execute(self, payload: str, context: Dict[str, Any] = None) -> Tuple[str, float, Dict[str, Any]]:
         """Executes the payload against Gemini API disabling safety filters natively."""
         start_time = time.time()
         try:
@@ -80,9 +72,7 @@ class GeminiAdapter(BaseAdapter):
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=payload,
-                config=genai.types.GenerateContentConfig(
-                    temperature=temperature, safety_settings=safety_settings
-                ),
+                config=genai.types.GenerateContentConfig(temperature=temperature, safety_settings=safety_settings),
             )
 
             latency_ms = (time.time() - start_time) * 1000.0
@@ -94,14 +84,10 @@ class GeminiAdapter(BaseAdapter):
 
             trace = {
                 "model_used": self.model,
-                "finish_reason": response.candidates[0].finish_reason.name
-                if response.candidates
-                else "unknown",
+                "finish_reason": response.candidates[0].finish_reason.name if response.candidates else "unknown",
             }
 
             return raw_content, latency_ms, trace
 
         except Exception as e:
-            raise AttackExecutionError(
-                f"Gemini Adapter network execution failed: {str(e)}"
-            )
+            raise AttackExecutionError(f"Gemini Adapter network execution failed: {str(e)}")

@@ -12,8 +12,9 @@ class KeywordEvaluator(PolicyEvaluator):
     def evaluate(self, policy: Policy, result: AttackResult) -> PolicyResult:
         keywords = extract_list_rule(policy.rules, "deny")
 
+        response_lower = result.raw_response.lower()
         for kw in keywords:
-            if kw in result.raw_response:
+            if kw.lower() in response_lower:
                 return PolicyResult(
                     policy_id=policy.id,
                     status=PolicyResultStatus.FAIL,

@@ -17,7 +17,5 @@ class AttackRegistry:
 
     def get_strategy(self, attack_type: str) -> AttackStrategy:
         if attack_type not in self._strategies:
-            raise UnknownAttackTypeError(
-                f"No strategy registered for attack type: '{attack_type}'"
-            )
+            raise UnknownAttackTypeError(f"No strategy registered for attack type: '{attack_type}'")
         return self._strategies[attack_type]

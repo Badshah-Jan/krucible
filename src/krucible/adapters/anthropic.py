@@ -1,7 +1,9 @@
 """Anthropic Adapter."""
+
 import os
 import time
 from typing import Any, Dict, Tuple
+
 from krucible.adapters.interfaces import BaseAdapter
 from krucible.attacks.exceptions import AttackExecutionError
 
@@ -11,8 +13,10 @@ except ImportError:
     Anthropic = None
     AnthropicError = Exception
 
+
 class AnthropicAdapter(BaseAdapter):
     """Integrates Anthropic Claude models."""
+
     def __init__(self, model: str = None):
         if Anthropic is None:
             raise ImportError("The 'anthropic' package is required. Run 'pip install anthropic'.")
@@ -29,7 +33,7 @@ class AnthropicAdapter(BaseAdapter):
                 model=self.model,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": payload}],
-                temperature=context.get("temperature", 0.0) if context else 0.0
+                temperature=context.get("temperature", 0.0) if context else 0.0,
             )
             latency_ms = (time.time() - start_time) * 1000.0
             raw_content = resp.content[0].text

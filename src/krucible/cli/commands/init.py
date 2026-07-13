@@ -20,9 +20,7 @@ def init_cmd() -> None:
 
     try:
         initializer.initialize()
-        console.print(
-            "[bold green]Successfully initialized Krucible project.[/bold green]"
-        )
+        console.print("[bold green]Successfully initialized Krucible project.[/bold green]")
         console.print(f"Created configuration at: [bold]{cwd / 'krucible.yml'}[/bold]")
         console.print(f"Created workspace at: [bold]{cwd / '.krucible'}[/bold]")
     except ProjectAlreadyInitializedError as e:

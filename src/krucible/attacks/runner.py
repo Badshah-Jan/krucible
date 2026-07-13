@@ -44,6 +44,4 @@ class AttackRunner:
                 adapter_trace=trace,
             )
         except Exception as e:
-            raise AttackExecutionError(
-                f"Critical failure executing attack {attack.id}: {str(e)}"
-            )
+            raise AttackExecutionError(f"Critical failure executing attack {attack.id}: {str(e)}")

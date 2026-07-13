@@ -51,9 +51,7 @@ def test_openai_adapter_execution_success(mock_openai_class, mock_env_vars):
     assert trace["usage"]["total_tokens"] == 15
 
     # Verify the internal client received the correct Responses API parameters
-    mock_client.responses.create.assert_called_once_with(
-        model="o3-mini", input="Hello", temperature=0.0
-    )
+    mock_client.responses.create.assert_called_once_with(model="o3-mini", input="Hello", temperature=0.0)
 
 
 @patch("krucible.adapters.openai.OpenAI")
@@ -63,9 +61,7 @@ def test_openai_adapter_reads_krucible_yml(mock_openai_class, mock_env_vars, tmp
 
     config_path = tmp_path / "krucible.yml"
     config_path.write_text(
-        yaml.dump(
-            {"version": "v1", "target": {"adapter": "openai", "model": "gpt-5.1"}}
-        ),
+        yaml.dump({"version": "v1", "target": {"adapter": "openai", "model": "gpt-5.1"}}),
         encoding="utf-8",
     )
 

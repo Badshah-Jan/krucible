@@ -29,6 +29,10 @@ class RegexEvaluator(PolicyEvaluator):
         except re.error as e:
             raise PolicyEvaluationError(f"Invalid regex in policy '{policy.id}': {e}")
 
+    def validate(self, policy: Policy) -> None:
+        """Eagerly validates and caches regex rules."""
+        self._compile(policy)
+
     def evaluate(self, policy: Policy, result: AttackResult) -> PolicyResult:
         compiled_rules = self._compile(policy)
 

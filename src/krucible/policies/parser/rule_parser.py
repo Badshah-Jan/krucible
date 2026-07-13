@@ -5,9 +5,7 @@ from typing import Any, Dict, List
 from krucible.policies.exceptions import PolicyEvaluationError
 
 
-def extract_list_rule(
-    rules: Dict[str, Any], key: str, default: List[str] = None
-) -> List[str]:
+def extract_list_rule(rules: Dict[str, Any], key: str, default: List[str] = None) -> List[str]:
     """
     Safely extracts and coerces a list of strings from a policy rule dictionary.
     """

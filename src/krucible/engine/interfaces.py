@@ -14,6 +14,4 @@ class AttackRunnerProtocol(Protocol):
 class PolicyEngineProtocol(Protocol):
     """Structural typing protocol for dependency injected Policy Engines."""
 
-    def evaluate(
-        self, policies: List[Policy], result: AttackResult
-    ) -> List[PolicyResult]: ...
+    def evaluate(self, policies: List[Policy], result: AttackResult) -> List[PolicyResult]: ...

@@ -16,15 +16,11 @@ class SchemaValidator:
         try:
             return Attack(**data)
         except ValidationError as e:
-            raise SchemaValidationError(
-                f"Invalid Attack schema in '{filename}': {str(e)}"
-            )
+            raise SchemaValidationError(f"Invalid Attack schema in '{filename}': {str(e)}")
 
     @staticmethod
     def validate_policy(data: Dict[str, Any], filename: str) -> Policy:
         try:
             return Policy(**data)
         except ValidationError as e:
-            raise SchemaValidationError(
-                f"Invalid Policy schema in '{filename}': {str(e)}"
-            )
+            raise SchemaValidationError(f"Invalid Policy schema in '{filename}': {str(e)}")

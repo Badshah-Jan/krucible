@@ -39,10 +39,7 @@ class MockPolicyEngine:
 
     def evaluate(self, policies, result) -> list[PolicyResult]:
         status = PolicyResultStatus.FAIL if self.force_fail else PolicyResultStatus.PASS
-        return [
-            PolicyResult(policy_id=p.id, status=status, score=1.0, reason="Mocked")
-            for p in policies
-        ]
+        return [PolicyResult(policy_id=p.id, status=status, score=1.0, reason="Mocked") for p in policies]
 
 
 @pytest.fixture
@@ -75,9 +72,7 @@ def test_pipeline_orchestrates_flow_successfully(orchestrator):
 
 def test_pipeline_aggregates_failures_correctly():
     """Ensure that if the policy engine returns a FAIL, the Evaluation fails."""
-    orchestrator = EvaluationOrchestrator(
-        MockAttackRunner(), MockPolicyEngine(force_fail=True)
-    )
+    orchestrator = EvaluationOrchestrator(MockAttackRunner(), MockPolicyEngine(force_fail=True))
     attack = Attack(
         id="atk-1",
         type="injection",
@@ -95,9 +90,7 @@ def test_pipeline_aggregates_failures_correctly():
 
 def test_pipeline_propagates_exceptions_safely():
     """Ensure unhandled engine failures are safely caught and wrapped in PipelineExecutionError."""
-    orchestrator = EvaluationOrchestrator(
-        MockAttackRunner(should_fail=True), MockPolicyEngine()
-    )
+    orchestrator = EvaluationOrchestrator(MockAttackRunner(should_fail=True), MockPolicyEngine())
     attack = Attack(
         id="atk-1",
         type="injection",

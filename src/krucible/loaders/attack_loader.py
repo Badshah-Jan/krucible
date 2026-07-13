@@ -19,9 +19,7 @@ class AttackLoader:
         """Loads all .yml files in the directory. Skips invalid files gracefully."""
         if not self.directory.exists() or not self.directory.is_dir():
             if console:
-                console.print(
-                    f"[yellow]Warning: Attack directory '{self.directory}' not found.[/yellow]"
-                )
+                console.print(f"[yellow]Warning: Attack directory '{self.directory}' not found.[/yellow]")
             return []
 
         attacks = []
@@ -33,9 +31,7 @@ class AttackLoader:
                 attack = SchemaValidator.validate_attack(data, file_path.name)
 
                 if attack.id in seen_ids:
-                    raise DuplicateIdError(
-                        f"Duplicate Attack ID '{attack.id}' found in '{file_path.name}'."
-                    )
+                    raise DuplicateIdError(f"Duplicate Attack ID '{attack.id}' found in '{file_path.name}'.")
 
                 seen_ids.add(attack.id)
                 attacks.append(attack)

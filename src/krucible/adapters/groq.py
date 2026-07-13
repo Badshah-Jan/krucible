@@ -1,7 +1,9 @@
 """Groq Adapter using OpenAI SDK."""
+
 import os
 import time
 from typing import Any, Dict, Tuple
+
 from krucible.adapters.interfaces import BaseAdapter
 from krucible.attacks.exceptions import AttackExecutionError
 
@@ -11,8 +13,10 @@ except ImportError:
     OpenAI = None
     OpenAIError = Exception
 
+
 class GroqAdapter(BaseAdapter):
     """Integrates Groq ultra-fast inference via the OpenAI SDK."""
+
     def __init__(self, model: str = None):
         if OpenAI is None:
             raise ImportError("The 'openai' package is required. Run 'pip install openai'.")

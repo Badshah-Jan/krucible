@@ -10,8 +10,8 @@ runner = CliRunner()
 def test_krucible_test_command_missing_config(tmp_path):
     """Ensure graceful failure when configuration is missing."""
     result = runner.invoke(app, ["test", "--config", str(tmp_path / "missing.yml")])
-    assert result.exit_code == 1
-    assert "Error" in result.stdout
+    assert result.exit_code == 2
+    assert "Krucible Tool Error" in result.stdout
 
 
 def test_krucible_test_command_mock_execution(tmp_path, monkeypatch):
@@ -20,9 +20,7 @@ def test_krucible_test_command_mock_execution(tmp_path, monkeypatch):
 
     config_file = tmp_path / "krucible.yml"
     config_file.write_text(
-        yaml.dump(
-            {"version": "v1", "target": {"adapter": "mock", "model": "mock-model"}}
-        ),
+        yaml.dump({"version": "v1", "target": {"adapter": "mock", "model": "mock-model"}}),
         encoding="utf-8",
     )
 

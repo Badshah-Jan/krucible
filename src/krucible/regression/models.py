@@ -12,6 +12,4 @@ class RegressionEngineConfig(BaseModel):
         le=1.0,
         description="Minimum acceptable cosine similarity before flagging drift.",
     )
-    enable_tool_drift_detection: bool = Field(
-        True, description="Whether to flag structural changes in tool usage."
-    )
+    enable_tool_drift_detection: bool = Field(True, description="Whether to flag structural changes in tool usage.")

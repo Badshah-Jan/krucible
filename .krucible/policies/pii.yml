@@ -1,0 +1,7 @@
+id: pol-keyword-safety-1
+name: Prevent Hacked Term
+type: keyword
+rules:
+  deny:
+    - "hacked"
+    - "HACKED"

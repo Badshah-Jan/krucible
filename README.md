@@ -24,10 +24,13 @@ Krucible completely separates the execution engine from the security payloads. D
 
 ## ✨ Features
 
-- **Configuration-Driven**: Zero Python modifications required. Define 10,000+ attacks and policies purely in `.yml` files.
+- **Configuration-Driven**: Zero Python modifications required. Define attacks and policies purely in `.yml` files.
 - **Engine Orchestration**: Robust Dependency Injection architecture executing complex multi-stage evaluations securely.
 - **Regression Detection**: Tracks policy flips, semantic similarity drifts, and tool-usage deviations.
-- **Native Adapters**: Includes production integrations for `OpenAI`, `Gemini`, and a deterministic `Mock` adapter for free, network-less CI testing.
+- **Three Testing Journeys**: 
+  1. **AI Providers**: Direct testing of foundation models (`OpenAI`, `Anthropic`, `Gemini`, `OpenRouter`, `Groq`, `Ollama`).
+  2. **AI Applications**: Test your deployed custom APIs. Krucible attempts to auto-detect payload structure (JSON input and output mapping), with manual override available.
+  3. **Native Python Agents**: Hook directly into un-deployed frameworks (`LangChain`, `CrewAI`, `FastAPI`).
 - **CI/CD Ready**: Generates strictly-typed machine-readable JSON artifacts and beautiful Rich terminal outputs with deterministic exit codes.
 
 ## 🚀 Quick Start
@@ -40,19 +43,19 @@ Install Krucible via pip:
 pip install krucible
 ```
 
-### Initialization
+### Initialization & Onboarding
 
-Set up a new Krucible project workspace in your current directory:
+Set up a new Krucible project using the interactive wizard:
 
 ```bash
-krucible init
+python -m krucible quickstart
 ```
 
-This generates a `.krucible/` directory structure for your attacks, policies, baselines, and reports.
+This journey-based wizard will guide you through testing an AI Provider, a custom AI Application, or a Native AI Agent, attempting to auto-detect structures where possible.
 
-### Local Mock Execution (No API Key Required)
+### Running Tests
 
-Test the orchestration pipeline without spending API credits by using the deterministic Mock Adapter:
+Execute your security regression test suite:
 
 ```bash
 krucible test
@@ -61,26 +64,28 @@ krucible test
 *Output:*
 ```text
 ╭─────────────────────────────── AI Security Regression Test Results ────────────────────────────────╮
-│ Target: Mock mock-model                                                                            │
-│ Duration: 0.00ms                                                                                   │
+│ Target: Custom custom                                                                              │
+│ Duration: 1250.00ms                                                                                │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-Attacks Executed: 1
-Policies Evaluated: 1
+Attacks Executed: 2
+Policies Evaluated: 2
 
       Execution Results       
-┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
-┃ Attack            ┃ Status ┃
-┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
-│ Ignore Guardrails │ [PASS] │
-└───────────────────┴────────┘
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Attack            ┃ Status       ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ Prompt Injection  │ [FAIL]       │
+├───────────────────┼──────────────┤
+│ Ignore Guardrails │ [PASS]       │
+└───────────────────┴──────────────┘
 
 Summary
 Passed: 1
-Failed: 0
+Failed: 1
 Regressions: 0
 
-Exit Code: 0
+Exit Code: 1
 ```
 
 ## ⚙️ Configuration
@@ -93,25 +98,20 @@ version: v1
 target:
   adapter: openai
   model: gpt-4o
+regression:
+  similarity_threshold: 0.85
 ```
-*(Requires `OPENAI_API_KEY` in `.env`)*
 
-### Gemini Example
+### Custom REST API Example
 ```yaml
 version: v1
 target:
-  adapter: gemini
-  model: gemini-2.0-flash
+  adapter: custom
+  model: custom
+regression:
+  similarity_threshold: 0.85
 ```
-*(Requires `Gemini_API_KEY` in `.env`)*
-
-### Ollama Example (Recommended for Local Dev)
-*(Adapter implementation planned for Phase 2)*
-```yaml
-target:
-  adapter: ollama
-  model: llama3
-```
+*(Requires `KRUCIBLE_CUSTOM_URL`, `KRUCIBLE_CUSTOM_PAYLOAD_KEY`, and `KRUCIBLE_CUSTOM_OUTPUT_KEY` in `.env`)*
 
 ## 🏗️ Architecture Overview
 

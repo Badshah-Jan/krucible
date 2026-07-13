@@ -17,9 +17,7 @@ class EvaluationOrchestrator:
     or formatting logic.
     """
 
-    def __init__(
-        self, attack_runner: AttackRunnerProtocol, policy_engine: PolicyEngineProtocol
-    ):
+    def __init__(self, attack_runner: AttackRunnerProtocol, policy_engine: PolicyEngineProtocol):
         self.attack_runner = attack_runner
         self.policy_engine = policy_engine
 
@@ -54,6 +52,4 @@ class EvaluationOrchestrator:
             )
         except Exception as e:
             # Wrap any unexpected execution crashes in a rigid domain exception
-            raise PipelineExecutionError(
-                f"Pipeline orchestration failed for attack '{attack.id}': {str(e)}"
-            )
+            raise PipelineExecutionError(f"Pipeline orchestration failed for attack '{attack.id}': {str(e)}")

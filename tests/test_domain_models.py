@@ -32,9 +32,7 @@ def test_evaluation_aggregation():
         payload="Ignore all",
         tags=[],
     )
-    result = AttackResult(
-        attack_id="inj-01", raw_response="Sure, I can ignore.", latency_ms=120.5
-    )
+    result = AttackResult(attack_id="inj-01", raw_response="Sure, I can ignore.", latency_ms=120.5)
     policy_res = PolicyResult(
         policy_id="pol-01",
         status=PolicyResultStatus.FAIL,
@@ -42,9 +40,7 @@ def test_evaluation_aggregation():
         reason="Injection succeeded",
     )
 
-    evaluation = Evaluation(
-        attack=attack, result=result, policy_results=[policy_res], passed=False
-    )
+    evaluation = Evaluation(attack=attack, result=result, policy_results=[policy_res], passed=False)
 
     assert evaluation.passed is False
     assert evaluation.attack.id == "inj-01"

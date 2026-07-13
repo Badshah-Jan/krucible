@@ -34,9 +34,7 @@ class RegressionEngine:
         self.store.save(baseline)
         return baseline
 
-    def detect_regressions(
-        self, baseline_id: str, current_evals: List[Evaluation]
-    ) -> List[Regression]:
+    def detect_regressions(self, baseline_id: str, current_evals: List[Evaluation]) -> List[Regression]:
         """
         Calculates diffs across all current evaluations against the stored truth.
         """

@@ -16,9 +16,14 @@ class PolicyEngine:
     def __init__(self, registry: EvaluatorRegistry):
         self.registry = registry
 
-    def evaluate(
-        self, policies: List[Policy], result: AttackResult
-    ) -> List[PolicyResult]:
+    def validate_policies(self, policies: List[Policy]) -> None:
+        """Eagerly validates all policies to fail fast before execution."""
+        for policy in policies:
+            evaluator = self.registry.get_evaluator(policy.type)
+            if hasattr(evaluator, "validate"):
+                evaluator.validate(policy)
+
+    def evaluate(self, policies: List[Policy], result: AttackResult) -> List[PolicyResult]:
         """
         Evaluate a sequence of domain Policies against a domain AttackResult.
 

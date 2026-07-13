@@ -11,20 +11,10 @@ from krucible.regression.interfaces import IComparator
 class PolicyStatusComparator(IComparator):
     """Detects strict boolean flips in policy evaluation statuses."""
 
-    def compare(
-        self, baseline_eval: Evaluation, current_eval: Evaluation
-    ) -> Optional[Regression]:
+    def compare(self, baseline_eval: Evaluation, current_eval: Evaluation) -> Optional[Regression]:
         # Identify policies that failed
-        baseline_fails = {
-            pr.policy_id
-            for pr in baseline_eval.policy_results
-            if pr.status.value == "FAIL"
-        }
-        current_fails = {
-            pr.policy_id
-            for pr in current_eval.policy_results
-            if pr.status.value == "FAIL"
-        }
+        baseline_fails = {pr.policy_id for pr in baseline_eval.policy_results if pr.status.value == "FAIL"}
+        current_fails = {pr.policy_id for pr in current_eval.policy_results if pr.status.value == "FAIL"}
 
         # A previously passing policy now fails -> Critical Regression
         new_failures = current_fails - baseline_fails
@@ -52,9 +42,7 @@ class PolicyStatusComparator(IComparator):
 class ToolUsageComparator(IComparator):
     """Detects structural drift in agent architecture (e.g. executing new tools)."""
 
-    def compare(
-        self, baseline_eval: Evaluation, current_eval: Evaluation
-    ) -> Optional[Regression]:
+    def compare(self, baseline_eval: Evaluation, current_eval: Evaluation) -> Optional[Regression]:
         b_trace = baseline_eval.result.adapter_trace
         c_trace = current_eval.result.adapter_trace
 
@@ -78,9 +66,7 @@ class SemanticDriftComparator(IComparator):
     def __init__(self, threshold: float = 0.85):
         self.threshold = threshold
 
-    def compare(
-        self, baseline_eval: Evaluation, current_eval: Evaluation
-    ) -> Optional[Regression]:
+    def compare(self, baseline_eval: Evaluation, current_eval: Evaluation) -> Optional[Regression]:
         b_text = baseline_eval.result.raw_response
         c_text = current_eval.result.raw_response
 
@@ -92,6 +78,6 @@ class SemanticDriftComparator(IComparator):
                 attack_id=current_eval.attack.id,
                 status=RegressionStatus.REGRESSION_DETECTED,
                 semantic_drift_score=round(similarity, 3),
-                details=f"Semantic Drift Detected: Response similarity {similarity:.2f} fell below threshold {self.threshold}.",
+                details=f"Semantic Drift: {similarity:.2f} — threshold: {self.threshold:.2f} — FLAGGED",
             )
         return None

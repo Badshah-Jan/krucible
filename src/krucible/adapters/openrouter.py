@@ -15,6 +15,7 @@ from krucible.adapters.interfaces import BaseAdapter
 from krucible.attacks.exceptions import AttackExecutionError
 from krucible.config.loader import ConfigLoader
 
+
 class OpenRouterAdapter(BaseAdapter):
     """Integrates OpenRouter via the OpenAI python SDK."""
 

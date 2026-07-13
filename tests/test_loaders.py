@@ -61,9 +61,7 @@ def test_attack_loader_skips_invalid_gracefully(tmp_path):
 def test_policy_loader_success(tmp_path):
     d = tmp_path / "policies"
     d.mkdir()
-    (d / "p1.yml").write_text(
-        "id: pol-1\nname: N\ntype: keyword\nrules:\n  deny: ['test']", encoding="utf-8"
-    )
+    (d / "p1.yml").write_text("id: pol-1\nname: N\ntype: keyword\nrules:\n  deny: ['test']", encoding="utf-8")
 
     loader = PolicyLoader(d)
     policies = loader.load_all()

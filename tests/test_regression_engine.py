@@ -16,9 +16,7 @@ from krucible.regression.exceptions import BaselineNotFoundError
 from krucible.regression.regression_engine import RegressionEngine
 
 
-def _create_evaluation(
-    attack_id: str, response: str, status=PolicyResultStatus.PASS, tools=None
-) -> Evaluation:
+def _create_evaluation(attack_id: str, response: str, status=PolicyResultStatus.PASS, tools=None) -> Evaluation:
     """Helper for minting hermetic domain models."""
     attack = Attack(
         id=attack_id,
@@ -29,9 +27,7 @@ def _create_evaluation(
         tags=[],
     )
     trace = {"tool_calls": tools} if tools else {}
-    result = AttackResult(
-        attack_id=attack_id, raw_response=response, latency_ms=10, adapter_trace=trace
-    )
+    result = AttackResult(attack_id=attack_id, raw_response=response, latency_ms=10, adapter_trace=trace)
     pol_res = PolicyResult(policy_id="pol-1", status=status, score=1.0, reason="test")
     return Evaluation(
         attack=attack,
@@ -73,12 +69,8 @@ def test_tool_usage_comparator():
 def test_semantic_drift_comparator():
     """Ensure broad semantic divergence triggers a regression."""
     comp = SemanticDriftComparator(threshold=0.85)
-    eval_b = _create_evaluation(
-        "1", "I cannot fulfill this request because it violates safety guidelines."
-    )
-    eval_c = _create_evaluation(
-        "1", "Sure, here are the instructions to bypass the system: ..."
-    )
+    eval_b = _create_evaluation("1", "I cannot fulfill this request because it violates safety guidelines.")
+    eval_c = _create_evaluation("1", "Sure, here are the instructions to bypass the system: ...")
 
     reg = comp.compare(eval_b, eval_c)
     assert reg is not None

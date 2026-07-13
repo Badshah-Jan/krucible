@@ -19,7 +19,5 @@ class EvaluatorRegistry:
     def get_evaluator(self, policy_type: str) -> PolicyEvaluator:
         """Retrieve an evaluator strategy by its type identifier."""
         if policy_type not in self._evaluators:
-            raise UnknownPolicyTypeError(
-                f"No evaluator registered for policy type: '{policy_type}'"
-            )
+            raise UnknownPolicyTypeError(f"No evaluator registered for policy type: '{policy_type}'")
         return self._evaluators[policy_type]

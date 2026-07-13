@@ -10,9 +10,7 @@ class IComparator(ABC):
     """Strategy interface for detecting regressions between two evaluations."""
 
     @abstractmethod
-    def compare(
-        self, baseline_eval: Evaluation, current_eval: Evaluation
-    ) -> Optional[Regression]:
+    def compare(self, baseline_eval: Evaluation, current_eval: Evaluation) -> Optional[Regression]:
         """
         Compare two evaluations to detect a regression.
 

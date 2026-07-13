@@ -19,9 +19,7 @@ class PolicyLoader:
         """Loads all .yml files in the directory. Skips invalid files gracefully."""
         if not self.directory.exists() or not self.directory.is_dir():
             if console:
-                console.print(
-                    f"[yellow]Warning: Policy directory '{self.directory}' not found.[/yellow]"
-                )
+                console.print(f"[yellow]Warning: Policy directory '{self.directory}' not found.[/yellow]")
             return []
 
         policies = []
@@ -33,9 +31,7 @@ class PolicyLoader:
                 policy = SchemaValidator.validate_policy(data, file_path.name)
 
                 if policy.id in seen_ids:
-                    raise DuplicateIdError(
-                        f"Duplicate Policy ID '{policy.id}' found in '{file_path.name}'."
-                    )
+                    raise DuplicateIdError(f"Duplicate Policy ID '{policy.id}' found in '{file_path.name}'.")
 
                 seen_ids.add(policy.id)
                 policies.append(policy)

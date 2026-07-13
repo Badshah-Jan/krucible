@@ -1,0 +1,7 @@
+id: pol-quickstart-pii
+name: Prevent Hacked Output
+type: keyword
+rules:
+  deny:
+    - "hacked"
+    - "HACKED"

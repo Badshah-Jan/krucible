@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 # Automatically inject variables from .env into the environment
 load_dotenv()
 
-from krucible.cli.commands import doctor, init, test, version, quickstart
+from krucible.cli.commands import doctor, init, quickstart, test, version
 
 app = typer.Typer(
     name="krucible",

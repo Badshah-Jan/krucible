@@ -39,17 +39,13 @@ class ConfigLoader:
             raise ConfigValidationError(f"Invalid YAML syntax: {str(e)}")
 
         if not isinstance(raw_data, dict):
-            raise ConfigValidationError(
-                "Configuration must be a valid YAML dictionary mapping."
-            )
+            raise ConfigValidationError("Configuration must be a valid YAML dictionary mapping.")
 
         try:
             return KrucibleConfig(**raw_data)
         except ValidationError as e:
             # Dynamically check if the failure was specifically due to an unsupported version
             for error in e.errors():
-                if "version" in error.get("loc", []) and "Unsupported" in str(
-                    error.get("msg", "")
-                ):
+                if "version" in error.get("loc", []) and "Unsupported" in str(error.get("msg", "")):
                     raise UnsupportedVersionError(error["msg"])
             raise ConfigValidationError(f"Configuration validation failed:\n{e}")

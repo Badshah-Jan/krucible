@@ -8,5 +8,8 @@ dist/
 build/
 *.egg-info/
 .env
-.krucible/
-!tests/.krucible/
+.krucible/baselines/
+.krucible/reports/
+.ruff_cache/
+output.txt
+krucible.yml

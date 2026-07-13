@@ -14,29 +14,31 @@ from krucible.reports.json_reporter import JsonReporter
 
 @pytest.fixture
 def dummy_data():
-    atk = Attack(
-        id="atk-1", type="injection", name="Test", description="d", payload="p", tags=[]
-    )
+    from krucible.domain.enums import PolicyResultStatus
+    from krucible.domain.models import AttackResult
+    atk = Attack(id="atk-1", type="injection", name="Test", description="d", payload="p", tags=[])
     pol = Policy(id="pol-1", name="Test", type="keyword", rules={})
-    pr = PolicyResult(
-        policy_id="pol-1", passed=False, reason="Failed", match_details={}
+    pr = PolicyResult(policy_id="pol-1", status=PolicyResultStatus.FAIL, score=0.0, reason="Failed")
+
+    res = AttackResult(
+        attack_id="atk-1",
+        raw_response="err",
+        latency_ms=10.0,
+        adapter_trace={}
     )
 
     eval_res = Evaluation(
         attack=atk,
-        adapter_used="mock",
-        model_used="test-model",
-        passed=False,
-        latency_ms=10.0,
+        result=res,
         policy_results=[pr],
-        telemetry={},
+        passed=False
     )
 
     reg = Regression(
         attack_id="atk-1",
         status=RegressionStatus.REGRESSION_DETECTED,
-        reason="Flipped",
-        differences={},
+        semantic_drift_score=0.1,
+        details="Flipped",
     )
     return [eval_res], [reg]
 

@@ -8,9 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 class TargetConfig(BaseModel):
     """Configuration for the target AI application."""
 
-    adapter: str = Field(
-        ..., description="The adapter to use (e.g., openai, langchain)"
-    )
+    adapter: str = Field(..., description="The adapter to use (e.g., openai, langchain)")
     model: str = Field(..., description="The target LLM model")
 
 
@@ -38,16 +36,12 @@ class KrucibleConfig(BaseModel):
     project: ProjectConfig = Field(default_factory=ProjectConfig)
     target: TargetConfig
     regression: RegressionConfig = Field(default_factory=RegressionConfig)
-    plugins: List[str] = Field(
-        default_factory=list, description="List of active plugins"
-    )
+    plugins: List[str] = Field(default_factory=list, description="List of active plugins")
 
     @field_validator("version")
     @classmethod
     def validate_version(cls, v: str) -> str:
         """Ensure the configuration version is supported."""
         if v != "v1":
-            raise ValueError(
-                f"Unsupported configuration version: '{v}'. Expected 'v1'."
-            )
+            raise ValueError(f"Unsupported configuration version: '{v}'. Expected 'v1'.")
         return v

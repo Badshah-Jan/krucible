@@ -13,9 +13,7 @@ from krucible.reports.models import ReportSummary
 class CliReporter(BaseReporter):
     """Generates beautiful, terminal-friendly Rich outputs."""
 
-    def generate(
-        self, summary: ReportSummary, console: Console = None, **kwargs
-    ) -> str:
+    def generate(self, summary: ReportSummary, console: Console = None, **kwargs) -> str:
         if not console:
             console = Console()
 
@@ -28,27 +26,29 @@ class CliReporter(BaseReporter):
                 )
             )
 
-            console.print(
-                f"\n[bold]Attacks Executed:[/bold] {summary.attacks_executed}"
-            )
-            console.print(
-                f"[bold]Policies Evaluated:[/bold] {summary.policies_evaluated}\n"
-            )
+            console.print(f"\n[bold]Attacks Executed:[/bold] {summary.attacks_executed}")
+            console.print(f"[bold]Policies Evaluated:[/bold] {summary.policies_evaluated}\n")
 
             table = Table(title="Execution Results", show_lines=True)
             table.add_column("Attack", style="cyan", no_wrap=True)
             table.add_column("Status", style="bold")
+            table.add_column("Details", style="dim")
 
             reg_map = {r.attack_id: r for r in summary.regression_details}
 
             for eval_res in summary.evaluations:
                 reg = reg_map.get(eval_res.attack.id)
+                details_text = ""
                 if reg and reg.status == RegressionStatus.REGRESSION_DETECTED:
-                    table.add_row(eval_res.attack.name, "[red][REGRESSION][/red]")
+                    details_text = reg.details
+                    table.add_row(eval_res.attack.name, "[red][REGRESSION][/red]", details_text)
                 elif not eval_res.passed:
-                    table.add_row(eval_res.attack.name, "[red][FAIL][/red]")
+                    fail_reasons = ", ".join([pr.reason for pr in eval_res.policy_results if pr.status.value == "FAIL"])
+                    table.add_row(eval_res.attack.name, "[red][FAIL][/red]", fail_reasons)
                 else:
-                    table.add_row(eval_res.attack.name, "[green][PASS][/green]")
+                    if reg and reg.status == RegressionStatus.NO_REGRESSION:
+                        details_text = reg.details
+                    table.add_row(eval_res.attack.name, "[green][PASS][/green]", details_text)
 
             console.print(table)
 

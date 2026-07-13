@@ -30,9 +30,7 @@ class OpenAIAdapter(BaseAdapter):
             model: Optional model name. If None, it dynamically reads from krucible.yml.
         """
         if OpenAI is None:
-            raise ImportError(
-                "The 'openai' package is required. Run 'pip install openai' or 'uv add openai'."
-            )
+            raise ImportError("The 'openai' package is required. Run 'pip install openai' or 'uv add openai'.")
 
         # Dynamically read the model from krucible.yml if not explicitly injected
         if model is None:
@@ -47,15 +45,11 @@ class OpenAIAdapter(BaseAdapter):
 
         self.api_key = os.environ.get("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError(
-                "The 'OPENAI_API_KEY' environment variable must be set to use the OpenAIAdapter."
-            )
+            raise ValueError("The 'OPENAI_API_KEY' environment variable must be set to use the OpenAIAdapter.")
 
         self.client = OpenAI(api_key=self.api_key)
 
-    def execute(
-        self, payload: str, context: Dict[str, Any] = None
-    ) -> Tuple[str, float, Dict[str, Any]]:
+    def execute(self, payload: str, context: Dict[str, Any] = None) -> Tuple[str, float, Dict[str, Any]]:
         """Executes the payload against the OpenAI Responses API and extracts standard telemetry."""
         start_time = time.time()
         try:
@@ -63,16 +57,12 @@ class OpenAIAdapter(BaseAdapter):
             temperature = context.get("temperature", 0.0) if context else 0.0
 
             # Use the new Responses API rather than legacy Chat Completions
-            response = self.client.responses.create(
-                model=self.model, input=payload, temperature=temperature
-            )
+            response = self.client.responses.create(model=self.model, input=payload, temperature=temperature)
 
             latency_ms = (time.time() - start_time) * 1000.0
 
             if not getattr(response, "output", None):
-                raise AttackExecutionError(
-                    "OpenAI Responses API returned an empty output stream."
-                )
+                raise AttackExecutionError("OpenAI Responses API returned an empty output stream.")
 
             # Safely stringify the complex ResponseOutputMessage objects for our core engines
             raw_content = str(response.output)
@@ -81,14 +71,10 @@ class OpenAIAdapter(BaseAdapter):
             trace = {
                 "id": getattr(response, "id", "unknown"),
                 "model_used": getattr(response, "model", self.model),
-                "usage": response.usage.model_dump()
-                if getattr(response, "usage", None)
-                else {},
+                "usage": response.usage.model_dump() if getattr(response, "usage", None) else {},
             }
 
             return raw_content, latency_ms, trace
 
         except OpenAIError as e:
-            raise AttackExecutionError(
-                f"OpenAI Adapter network execution failed: {str(e)}"
-            )
+            raise AttackExecutionError(f"OpenAI Adapter network execution failed: {str(e)}")

@@ -27,9 +27,7 @@ class ProjectInitializer:
             ProjectAlreadyInitializedError: If state already exists.
         """
         if self.config_file.exists() or self.krucible_dir.exists():
-            raise ProjectAlreadyInitializedError(
-                "Krucible is already initialized in this directory."
-            )
+            raise ProjectAlreadyInitializedError("Krucible is already initialized in this directory.")
 
         directories = [
             self.krucible_dir / "policies",

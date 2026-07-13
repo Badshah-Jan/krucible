@@ -31,9 +31,7 @@ class ReportEngine:
         """Aggregates execution results into a unified CI/CD ready schema."""
         passed = sum(1 for e in evaluations if e.passed)
         failed = len(evaluations) - passed
-        reg_count = sum(
-            1 for r in regressions if r.status == RegressionStatus.REGRESSION_DETECTED
-        )
+        reg_count = sum(1 for r in regressions if r.status == RegressionStatus.REGRESSION_DETECTED)
 
         policies_evaluated = len(evaluations[0].policy_results) if evaluations else 0
 
@@ -55,9 +53,7 @@ class ReportEngine:
         """Generates the report via the chosen strategy."""
         reporter = self.reporters.get(format_name)
         if not reporter:
-            raise ReportGenerationError(
-                f"Reporter format '{format_name}' is not registered."
-            )
+            raise ReportGenerationError(f"Reporter format '{format_name}' is not registered.")
         return reporter.generate(summary, **kwargs)
 
     def save_to_file(self, content: str, path: Path):

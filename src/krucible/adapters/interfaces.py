@@ -11,9 +11,7 @@ class BaseAdapter(ABC):
     """
 
     @abstractmethod
-    def execute(
-        self, payload: str, context: Dict[str, Any] = None
-    ) -> Tuple[str, float, Dict[str, Any]]:
+    def execute(self, payload: str, context: Dict[str, Any] = None) -> Tuple[str, float, Dict[str, Any]]:
         """
         Transmits the adversarial payload to the target.
 
