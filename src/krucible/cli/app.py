@@ -14,6 +14,18 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+def version_callback(value: bool):
+    if value:
+        from krucible.cli.commands.version import version_cmd
+        version_cmd()
+        raise typer.Exit()
+
+@app.callback()
+def main(
+    version: bool = typer.Option(None, "--version", "-v", callback=version_callback, is_eager=True, help="Show the Krucible version information.")
+):
+    pass
+
 # Register command handlers
 app.command(name="version")(version.version_cmd)
 app.command(name="doctor")(doctor.doctor_cmd)

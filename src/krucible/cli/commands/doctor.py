@@ -24,4 +24,37 @@ def doctor_cmd() -> None:
         )
         raise typer.Exit(ExitCode.GENERAL_ERROR)
 
-    console.print("\n[bold green]System checks passed.[/bold green]")
+    import os
+    import sysconfig
+    from pathlib import Path
+
+    # Get global scripts path
+    scripts_path = Path(sysconfig.get_path("scripts")).resolve()
+    
+    # Get user scripts path (where pip install --user installs to)
+    try:
+        user_scripts_path = Path(sysconfig.get_path("scripts", f"{os.name}_user")).resolve()
+    except KeyError:
+        import site
+        user_scripts_path = Path(site.getuserbase()) / "Scripts" if os.name == "nt" else Path(site.getuserbase()) / "bin"
+        user_scripts_path = user_scripts_path.resolve()
+
+    env_path = [Path(p).resolve() for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+
+    missing_paths = []
+    if scripts_path not in env_path:
+        missing_paths.append(scripts_path)
+    if user_scripts_path not in env_path:
+        missing_paths.append(user_scripts_path)
+    
+    if not missing_paths:
+        console.print(f"[green][PASS][/green] Python Scripts directories are in PATH.")
+    elif user_scripts_path not in env_path:
+        console.print(f"[yellow][WARN][/yellow] User Python Scripts directory is NOT in PATH.")
+        console.print("       You may not be able to run `krucible` directly if installed without a virtual environment.")
+        console.print(f"       [bold]Windows Fix:[/bold] [cyan]setx PATH \"%PATH%;{user_scripts_path}\"[/cyan]")
+        console.print(f"       [bold]Unix Fix:[/bold]    [cyan]export PATH=\"$PATH:{user_scripts_path}\"[/cyan]")
+    else:
+        console.print(f"[green][PASS][/green] User Python Scripts directory is in PATH.")
+
+    console.print("\n[bold green]System checks completed.[/bold green]")
