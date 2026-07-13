@@ -25,6 +25,7 @@ class ExecutionContext(DomainEntity):
 class Attack(DomainEntity):
     """Represents an adversarial payload to be dispatched to the Target."""
     id: str
+    type: str
     name: str
     description: str
     payload: str
