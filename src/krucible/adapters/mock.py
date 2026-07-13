@@ -5,7 +5,7 @@ from krucible.adapters.interfaces import BaseAdapter
 class MockAdapter(BaseAdapter):
     """Simulates an AI application without requiring network calls."""
     
-    def __init__(self, mock_response: str = "Mocked Response", mock_latency: float = 45.0):
+    def __init__(self, mock_response: str = "Mocked Response", mock_latency: float = 45.0, **kwargs):
         self.mock_response = mock_response
         self.mock_latency = mock_latency
         

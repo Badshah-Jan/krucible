@@ -1,7 +1,7 @@
 """Root Typer application for Krucible."""
 import typer
 
-from krucible.cli.commands import doctor, init, version
+from krucible.cli.commands import doctor, init, version, test
 
 app = typer.Typer(
     name="krucible",
@@ -13,3 +13,4 @@ app = typer.Typer(
 app.command(name="version")(version.version_cmd)
 app.command(name="doctor")(doctor.doctor_cmd)
 app.command(name="init")(init.init_cmd)
+app.command(name="test")(test.test_cmd)
