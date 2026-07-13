@@ -9,6 +9,9 @@ from rich.console import Console
 from krucible.adapters.gemini import GeminiAdapter
 from krucible.adapters.mock import MockAdapter
 from krucible.adapters.openai import OpenAIAdapter
+from krucible.adapters.openrouter import OpenRouterAdapter
+from krucible.adapters.ollama import OllamaAdapter
+from krucible.adapters.custom import CustomRestAdapter
 from krucible.adapters.registry import AdapterRegistry
 from krucible.attacks.payloads.strategies import (
     JailbreakStrategy,
@@ -59,10 +62,11 @@ def test_cmd(
         # 2. Wire up Dependency Registries
         adapter_reg = AdapterRegistry()
         adapter_reg.register("openai", OpenAIAdapter)
-        adapter_reg.register(
-            "mock", MockAdapter
-        )  # Enabled strictly for CI/CD unit testing
+        adapter_reg.register("mock", MockAdapter)  # Enabled strictly for CI/CD unit testing
         adapter_reg.register("gemini", GeminiAdapter)
+        adapter_reg.register("openrouter", OpenRouterAdapter)
+        adapter_reg.register("ollama", OllamaAdapter)
+        adapter_reg.register("custom", CustomRestAdapter)
         adapter = adapter_reg.get_adapter(
             config.target.adapter, model=config.target.model
         )
